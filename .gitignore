@@ -28,6 +28,7 @@ porkbun_credentials.json
 *.pem
 *.p12
 *.pfx
+*.csr
 
 # Database credentials
 *_db_password.txt
@@ -40,6 +41,19 @@ storage/
 api/version_cache.json
 *.log
 logs/
+*.log.*
+
+# ============================================================================
+# NODE.JS (WebSocket relay server)
+# ============================================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+.npm
+.node_repl_history
 
 # ============================================================================
 # TEMPORARY FILES
@@ -77,6 +91,17 @@ Thumbs.db
 *.sublime-workspace
 
 # ============================================================================
+# PHP SPECIFIC
+# ============================================================================
+# Composer (if used)
+vendor/
+composer.lock
+composer.phar
+
+# PHPUnit
+.phpunit.result.cache
+
+# ============================================================================
 # KEEP THESE (Required for deploy):
 # ============================================================================
 # ✅ api/ - PHP API endpoints
@@ -86,6 +111,8 @@ Thumbs.db
 # ✅ migrations/ - Database migrations
 # ✅ apache/ - Apache configuration
 # ✅ scripts/ - Deployment scripts
+# ✅ scripts/server/websocket_relay_server.js - WebSocket relay
+# ✅ package.json - Node.js dependencies (for WebSocket relay)
 # ✅ .github/workflows/ - GitHub Actions
 # ✅ README.md, LICENSE - Project docs
-
+# ✅ index.html, admin.html - Admin interface
