@@ -472,32 +472,28 @@
     </div>
     
     <script>
-        // Fetch and display current version directly from GitHub
+        // Fetch and display current version directly from GitHub Releases API
         async function loadVersion() {
             const githubRepo = 'XDM-ZSBW/zip-sharefast-app';
             const githubApiUrl = `https://api.github.com/repos/${githubRepo}/releases/latest`;
-            
-            // Check localStorage cache first (1 hour cache)
             const cacheKey = 'sharefast_version_cache';
+            
+            // Always try to fetch fresh version from GitHub first
+            // Use cache only as immediate fallback while fetching
             const cached = localStorage.getItem(cacheKey);
             if (cached) {
                 try {
                     const cacheData = JSON.parse(cached);
-                    const cacheAge = Date.now() - cacheData.timestamp;
-                    const cacheDuration = 3600000; // 1 hour in milliseconds
-                    
-                    if (cacheAge < cacheDuration && cacheData.version) {
+                    if (cacheData.version) {
+                        // Show cached version immediately (for instant display)
                         updateVersionDisplay(cacheData.version);
-                        // Still fetch in background to update cache
-                        fetchVersionFromGitHub(githubApiUrl, cacheKey, true);
-                        return;
                     }
                 } catch (e) {
-                    // Invalid cache, continue to fetch
+                    // Invalid cache, ignore
                 }
             }
             
-            // Fetch from GitHub
+            // Always fetch fresh version from GitHub (will update display when received)
             await fetchVersionFromGitHub(githubApiUrl, cacheKey, false);
         }
         
@@ -511,7 +507,8 @@
                         'User-Agent': 'ShareFast-Website'
                     },
                     // No credentials needed - using public API
-                    credentials: 'omit'
+                    credentials: 'omit',
+                    cache: 'no-cache' // Always fetch fresh data
                 });
                 
                 if (response.ok) {
@@ -521,10 +518,10 @@
                         // Extract version from tag (remove 'v' prefix if present)
                         const version = data.tag_name.replace(/^v/i, '');
                         
-                        // Update display
+                        // Always update display with fresh version from GitHub
                         updateVersionDisplay(version);
                         
-                        // Cache in localStorage
+                        // Cache in localStorage for future page loads
                         try {
                             localStorage.setItem(cacheKey, JSON.stringify({
                                 version: version,
@@ -537,43 +534,63 @@
                         }
                         
                         if (!silent) {
-                            console.log('Version loaded from GitHub Releases:', version);
+                            console.log('✓ Version loaded from GitHub Releases:', version);
                         }
-                        return;
+                        return true; // Success
                     }
                 } else {
                     // Handle different error cases
                     if (response.status === 404) {
                         if (!silent) {
-                            console.warn('GitHub repository or releases not found. Repository may be private or have no releases yet.');
+                            console.warn('⚠ GitHub repository or releases not found. Repository may be private or have no releases yet.');
                         }
                     } else if (response.status === 403) {
                         if (!silent) {
-                            console.warn('GitHub API rate limit exceeded. Using cached or default version.');
+                            console.warn('⚠ GitHub API rate limit exceeded. Using cached or default version.');
                         }
                     } else {
                         if (!silent) {
-                            console.warn('GitHub API returned status:', response.status);
+                            console.warn('⚠ GitHub API returned status:', response.status);
                         }
                     }
                 }
             } catch (error) {
                 if (!silent) {
-                    console.error('Failed to load version from GitHub Releases API:', error.message);
+                    console.error('✗ Failed to load version from GitHub Releases API:', error.message);
                 }
             }
             
-            // Fallback to default if not silent (first attempt)
+            // Only use fallback if GitHub fetch completely failed
+            // Check if we have cached version first
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+                try {
+                    const cacheData = JSON.parse(cached);
+                    if (cacheData.version) {
+                        // Use cached version as fallback
+                        updateVersionDisplay(cacheData.version);
+                        if (!silent) {
+                            console.log('Using cached version:', cacheData.version);
+                        }
+                        return false; // Used cache, not fresh
+                    }
+                } catch (e) {
+                    // Invalid cache
+                }
+            }
+            
+            // Last resort: use hardcoded fallback (should rarely happen)
             if (!silent) {
                 const versionElement = document.getElementById('version-number');
-                if (versionElement) {
+                if (versionElement && !versionElement.textContent.includes('v')) {
                     versionElement.textContent = 'v1.0.1';
                 }
                 const quickVersion = document.getElementById('quick-version');
-                if (quickVersion) {
+                if (quickVersion && !quickVersion.textContent.includes('v')) {
                     quickVersion.textContent = 'v1.0.1';
                 }
             }
+            return false; // Failed
         }
         
         function updateVersionDisplay(version) {
