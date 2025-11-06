@@ -1,0 +1,81 @@
+# Git Attributes - Control what gets included in GitHub release source archives
+# Files marked with export-ignore will NOT be included in source code downloads
+
+# Core API Files - INCLUDE in releases
+api/** export
+database.php export
+database_schema.sql export
+config.php.example export
+migrations/** export
+apache/** export
+index.html export
+admin.html export
+README.md export
+LICENSE export
+
+# Node.js WebSocket Relay - INCLUDE in releases
+scripts/server/websocket_relay_server.js export
+package.json export
+
+# Deployment Scripts - EXCLUDE from releases (internal use)
+scripts/deploy/ export-ignore
+scripts/setup/ export-ignore
+
+# Debug Files - EXCLUDE from releases
+debug_*.php export-ignore
+init_admin.php export-ignore
+init_seed_admin.php export-ignore
+migrate_*.php export-ignore
+migrate_*.sql export-ignore
+seed_admin_*.sql export-ignore
+
+# Runtime Data - EXCLUDE from releases
+storage/ export-ignore
+*.log export-ignore
+logs/ export-ignore
+api/version_cache.json export-ignore
+
+# Development Files - EXCLUDE from releases
+.vscode/ export-ignore
+.idea/ export-ignore
+*.swp export-ignore
+*.swo export-ignore
+*~ export-ignore
+.DS_Store export-ignore
+Thumbs.db export-ignore
+
+# Temporary Files - EXCLUDE from releases
+*.tmp export-ignore
+*.temp export-ignore
+*.bak export-ignore
+*.backup export-ignore
+*.cache export-ignore
+tmp/ export-ignore
+temp/ export-ignore
+
+# Environment & Config Files - EXCLUDE from releases
+.env export-ignore
+.env.* export-ignore
+*.env export-ignore
+config.php export-ignore
+config.local.php export-ignore
+
+# Node.js - EXCLUDE from releases
+node_modules/ export-ignore
+package-lock.json export-ignore
+yarn.lock export-ignore
+npm-debug.log* export-ignore
+yarn-debug.log* export-ignore
+yarn-error.log* export-ignore
+
+# Secrets - EXCLUDE from releases
+*.crt export-ignore
+*.key export-ignore
+*.pem export-ignore
+*.p12 export-ignore
+*.pfx export-ignore
+*_secret.json export-ignore
+*_credentials.json export-ignore
+*_keys.json export-ignore
+secrets.json export-ignore
+
