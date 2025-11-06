@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShareFast - Admin Management</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #764ba2;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .auth-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .admin-section {
+            display: none;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+        }
+        
+        input[type="email"], input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        input[type="email"]:focus, input[type="text"]:focus {
+            outline: none;
+            border-color: #764ba2;
+        }
+        
+        button {
+            background: #764ba2;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        button:hover {
+            background: #5a3a7a;
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        
+        .btn-danger {
+            background: #dc3545;
+        }
+        
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        
+        .message {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .admin-list {
+            margin-top: 20px;
+        }
+        
+        .admin-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .admin-info {
+            flex: 1;
+        }
+        
+        .admin-email {
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .admin-meta {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .admin-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #764ba2;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        
+        .current-admin {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border-left: 4px solid #764ba2;
+        }
+        
+        .current-admin strong {
+            color: #764ba2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" class="back-link">← Back to Home</a>
+        <h1>Admin Management</h1>
+        <p class="subtitle">Manage ShareFast administrators</p>
+        
+        <div id="message" class="message"></div>
+        
+        <div id="authSection" class="auth-section">
+            <h2>Authenticate</h2>
+            <p style="margin-bottom: 20px; color: #666;">Enter your admin email address to access admin management:</p>
+            <div class="form-group">
+                <label for="email">Email Address:</label>
+                <input type="email" id="email" placeholder="your_admin@example.com" required>
+            </div>
+            <button onclick="authenticate()">Authenticate</button>
+        </div>
+        
+        <div id="adminSection" class="admin-section">
+            <div id="currentAdmin" class="current-admin"></div>
+            
+            <h2>Add New Admin</h2>
+            <div class="form-group">
+                <label for="newEmail">Email Address:</label>
+                <input type="email" id="newEmail" placeholder="new_admin@example.com">
+            </div>
+            <button onclick="addAdmin()">Add Admin</button>
+            
+            <div class="admin-list">
+                <h2 style="margin-top: 30px; margin-bottom: 15px;">Current Admins</h2>
+                <div id="adminList">
+                    <p style="color: #666;">Loading...</p>
+                </div>
+            </div>
+            
+            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
+                <button onclick="logout()" class="btn-secondary">Logout</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE = 'api';
+        let currentEmail = null;
+        let seedHash = null;
+        
+        // Check if user was previously authenticated (localStorage)
+        window.addEventListener('DOMContentLoaded', function() {
+            const savedEmail = localStorage.getItem('admin_email');
+            const savedHash = localStorage.getItem('admin_hash');
+            
+            if (savedEmail && savedHash) {
+                // User was previously authenticated, restore session
+                currentEmail = savedEmail;
+                seedHash = savedHash;
+                document.getElementById('authSection').style.display = 'none';
+                document.getElementById('adminSection').style.display = 'block';
+                document.getElementById('currentAdmin').innerHTML = 
+                    `<strong>Logged in as:</strong> ${savedEmail}`;
+                loadAdmins();
+            }
+        });
+        
+        function showMessage(text, type) {
+            const msgEl = document.getElementById('message');
+            msgEl.textContent = text;
+            msgEl.className = `message ${type}`;
+            msgEl.style.display = 'block';
+            
+            if (type === 'success') {
+                setTimeout(() => {
+                    msgEl.style.display = 'none';
+                }, 3000);
+            }
+        }
+        
+        async function authenticate() {
+            const email = document.getElementById('email').value.trim();
+            
+            if (!email) {
+                showMessage('Please enter your email address', 'error');
+                return;
+            }
+            
+            // Basic email validation
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                showMessage('Please enter a valid email address', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin_auth.php`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email: email })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success && result.authenticated) {
+                    currentEmail = email;
+                    // Generate hash for seed admin verification
+                    seedHash = await generateEmailHash(email);
+                    
+                    // Save to localStorage for persistence across page refreshes
+                    localStorage.setItem('admin_email', email);
+                    localStorage.setItem('admin_hash', seedHash);
+                    
+                    document.getElementById('authSection').style.display = 'none';
+                    document.getElementById('adminSection').style.display = 'block';
+                    document.getElementById('currentAdmin').innerHTML = 
+                        `<strong>Logged in as:</strong> ${email}`;
+                    
+                    loadAdmins();
+                } else {
+                    showMessage(result.message || 'Authentication failed. Email not found in admin list.', 'error');
+                }
+            } catch (error) {
+                showMessage('Connection error: ' + error.message, 'error');
+            }
+        }
+        
+        async function generateEmailHash(email) {
+            // Generate SHA-256 hash of email (lowercased)
+            const encoder = new TextEncoder();
+            const data = encoder.encode(email.toLowerCase().trim());
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+        
+        async function loadAdmins() {
+            try {
+                const response = await fetch(`${API_BASE}/admin_manage.php`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        action: 'list',
+                        seed_email_hash: seedHash
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    displayAdmins(result.admins || []);
+                } else {
+                    showMessage('Failed to load admins: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showMessage('Error loading admins: ' + error.message, 'error');
+            }
+        }
+        
+        function displayAdmins(admins) {
+            const listEl = document.getElementById('adminList');
+            
+            if (admins.length === 0) {
+                listEl.innerHTML = '<p style="color: #666;">No admins found.</p>';
+                return;
+            }
+            
+            listEl.innerHTML = admins.map(admin => {
+                const date = new Date(admin.added_at * 1000);
+                const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                
+                return `
+                    <div class="admin-item">
+                        <div class="admin-info">
+                            <div class="admin-email">${admin.email}</div>
+                            <div class="admin-meta">
+                                Added: ${dateStr} | 
+                                Status: ${admin.active ? 'Active' : 'Inactive'}
+                            </div>
+                        </div>
+                        <div class="admin-actions">
+                            ${admin.email !== currentEmail ? 
+                                `<button onclick="removeAdmin('${admin.email}')" class="btn-danger">Remove</button>` : 
+                                '<span style="color: #666; font-size: 12px;">(You)</span>'
+                            }
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        async function addAdmin() {
+            const email = document.getElementById('newEmail').value.trim();
+            
+            if (!email) {
+                showMessage('Please enter an email address', 'error');
+                return;
+            }
+            
+            // Basic email validation
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                showMessage('Please enter a valid email address', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin_manage.php`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        action: 'add',
+                        email: email,
+                        seed_email_hash: seedHash
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage(`Admin added successfully! Admin code: ${result.admin_code}`, 'success');
+                    document.getElementById('newEmail').value = '';
+                    loadAdmins();
+                } else {
+                    showMessage('Failed to add admin: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showMessage('Error adding admin: ' + error.message, 'error');
+            }
+        }
+        
+        async function removeAdmin(email) {
+            if (!confirm(`Are you sure you want to remove admin: ${email}?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin_manage.php`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        action: 'remove',
+                        email: email,
+                        seed_email_hash: seedHash
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('Admin removed successfully', 'success');
+                    loadAdmins();
+                } else {
+                    showMessage('Failed to remove admin: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showMessage('Error removing admin: ' + error.message, 'error');
+            }
+        }
+        
+        function logout() {
+            currentEmail = null;
+            seedHash = null;
+            
+            // Clear localStorage
+            localStorage.removeItem('admin_email');
+            localStorage.removeItem('admin_hash');
+            
+            document.getElementById('authSection').style.display = 'block';
+            document.getElementById('adminSection').style.display = 'none';
+            document.getElementById('email').value = '';
+            document.getElementById('newEmail').value = '';
+        }
+    </script>
+</body>
+</html>
+

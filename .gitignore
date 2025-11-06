@@ -1,0 +1,91 @@
+# ============================================================================
+# SECRETS & CREDENTIALS (NEVER COMMIT)
+# ============================================================================
+# Server configuration (contains sensitive credentials)
+config.php
+config.local.php
+
+# Environment files with secrets
+.env
+.env.local
+*.env
+
+# API keys and secrets
+*_secret.json
+*_credentials.json
+*_keys.json
+secrets.json
+config_secrets.json
+
+# Porkbun API credentials
+porkbun_config.json
+porkbun_credentials.json
+.porkbun.env
+
+# SSL certificates and keys
+*.crt
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Database credentials
+*_db_password.txt
+*_database_password.txt
+
+# ============================================================================
+# RUNTIME DATA & STORAGE (Server runtime - not needed in repo)
+# ============================================================================
+storage/
+api/version_cache.json
+*.log
+logs/
+
+# ============================================================================
+# TEMPORARY FILES
+# ============================================================================
+*.tmp
+*.temp
+*.bak
+*.backup
+*.cache
+tmp/
+temp/
+
+# ============================================================================
+# DEVELOPMENT FILES (Local development only)
+# ============================================================================
+# Debug files (development only)
+debug_*.php
+init_admin.php
+init_seed_admin.php
+migrate_*.php
+migrate_*.sql
+
+# Personal seed files (use config.php.example instead)
+seed_admin_*.sql
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.sublime-project
+*.sublime-workspace
+
+# ============================================================================
+# KEEP THESE (Required for deploy):
+# ============================================================================
+# ✅ api/ - PHP API endpoints
+# ✅ config.php.example - Config template
+# ✅ database.php - Database connection
+# ✅ database_schema.sql - Database schema
+# ✅ migrations/ - Database migrations
+# ✅ apache/ - Apache configuration
+# ✅ scripts/ - Deployment scripts
+# ✅ .github/workflows/ - GitHub Actions
+# ✅ README.md, LICENSE - Project docs
+

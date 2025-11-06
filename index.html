@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShareFast - Secure Remote Desktop Control</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            padding: 60px 20px 40px;
+        }
+        
+        .header h1 {
+            font-size: 3.5em;
+            font-weight: 700;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .header p {
+            font-size: 1.3em;
+            opacity: 0.95;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .content {
+            background: white;
+            border-radius: 20px;
+            padding: 50px;
+            margin: -30px 20px 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 30px;
+            margin: 40px 0;
+        }
+        
+        .feature {
+            text-align: center;
+            padding: 30px 20px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        
+        .feature:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        
+        .feature-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+        
+        .feature h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 1.3em;
+        }
+        
+        .feature p {
+            color: #666;
+            font-size: 0.95em;
+        }
+        
+        .download-section {
+            text-align: center;
+            margin: 50px 0;
+            padding: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 15px;
+            color: white;
+        }
+        
+        .download-section h2 {
+            font-size: 2.2em;
+            margin-bottom: 20px;
+        }
+        
+        .download-section p {
+            font-size: 1.1em;
+            margin-bottom: 30px;
+            opacity: 0.95;
+        }
+        
+        .download-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 18px 40px;
+            font-size: 1.1em;
+            font-weight: 600;
+            text-decoration: none;
+            border-radius: 50px;
+            transition: all 0.3s;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        .btn-primary {
+            background: white;
+            color: #667eea;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+        }
+        
+        .btn-secondary {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 2px solid white;
+        }
+        
+        .btn-secondary:hover {
+            background: white;
+            color: #667eea;
+        }
+        
+        .how-it-works {
+            margin: 50px 0;
+        }
+        
+        .how-it-works h2 {
+            text-align: center;
+            color: #667eea;
+            font-size: 2.2em;
+            margin-bottom: 40px;
+        }
+        
+        .steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 30px;
+            margin-top: 30px;
+        }
+        
+        .step {
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .step-number {
+            display: inline-block;
+            width: 50px;
+            height: 50px;
+            line-height: 50px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        
+        .step h3 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .step p {
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        .security-note {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 20px;
+            margin: 30px 0;
+            border-radius: 5px;
+        }
+        
+        .security-note h3 {
+            color: #2e7d32;
+            margin-bottom: 10px;
+        }
+        
+        .security-note p {
+            color: #555;
+        }
+        
+        .footer {
+            text-align: center;
+            color: white;
+            padding: 30px 20px;
+            opacity: 0.9;
+        }
+        
+        .quick-download {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: white;
+            padding: 12px 24px;
+            border-radius: 50px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            transition: all 0.3s;
+            text-decoration: none;
+            color: #667eea;
+            font-weight: 600;
+            font-size: 0.95em;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .quick-download:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+            background: #667eea;
+            color: white;
+        }
+        
+        .quick-download-icon {
+            font-size: 1.2em;
+        }
+        
+        .nerd-hint {
+            position: relative;
+            display: inline-block;
+            cursor: help;
+            color: #667eea;
+            text-decoration: underline;
+            text-decoration-style: dotted;
+            font-size: 0.85em;
+            margin-left: 5px;
+        }
+        
+        .nerd-hint:hover .nerd-tooltip {
+            visibility: visible;
+            opacity: 1;
+        }
+        
+        .nerd-tooltip {
+            visibility: hidden;
+            opacity: 0;
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 0.85em;
+            white-space: normal;
+            max-width: 300px;
+            z-index: 1000;
+            margin-bottom: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: opacity 0.2s, visibility 0.2s;
+            text-align: left;
+            line-height: 1.5;
+        }
+        
+        .nerd-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 6px solid transparent;
+            border-top-color: #333;
+        }
+        
+        .feature-term {
+            position: relative;
+            display: inline-block;
+        }
+        
+        @media (max-width: 768px) {
+            .quick-download {
+                top: 10px;
+                right: 10px;
+                padding: 10px 18px;
+                font-size: 0.85em;
+            }
+            
+            .header h1 {
+                font-size: 2.5em;
+            }
+            
+            .content {
+                padding: 30px 20px;
+                margin: -20px 10px 20px;
+            }
+            
+            .download-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .btn {
+                width: 100%;
+                max-width: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Quick Download Button - Top Right Corner -->
+    <a href="https://github.com/XDM-ZSBW/zip-sharefast-app/releases/latest/download/ShareFast.zip" class="quick-download" download="ShareFast.zip" title="Quick Download ShareFast.zip">
+        <span class="quick-download-icon">📦</span>
+        <span>Download ZIP</span>
+        <span id="quick-version" style="font-size: 0.85em; opacity: 0.8; margin-left: 5px;">v1.1.1</span>
+    </a>
+    
+    <div class="container">
+        <div class="header">
+            <h1>🚀 ShareFast</h1>
+            <p>Secure, fast remote desktop control for helping friends and family</p>
+        </div>
+        
+        <div class="content">
+            <div style="text-align: center; margin-bottom: 40px;">
+                <h2 style="color: #667eea; font-size: 2em; margin-bottom: 15px;">Help Your Loved Ones Instantly</h2>
+                <p style="font-size: 1.2em; color: #666; max-width: 700px; margin: 0 auto; line-height: 1.8;">
+                    Tired of trying to explain tech problems over the phone? ShareFast lets you see their screen and fix things yourself—in seconds. 
+                    No complicated setup, no accounts, no passwords. Just download, share a simple code, and you're helping them solve it together.
+                </p>
+                <p style="font-size: 1em; color: #888; max-width: 700px; margin: 15px auto 0;">
+                    Perfect for helping parents, grandparents, friends, or anyone who needs a little tech support.<span class="nerd-hint">For Nerds<span class="nerd-tooltip">Uses peer-to-peer (P2P) architecture for direct device-to-device connection</span></span>
+                </p>
+            </div>
+            
+            <div class="features">
+                <div class="feature">
+                    <div class="feature-icon">🔒</div>
+                    <h3>Your Privacy Matters</h3>
+                    <p>Everything stays between you and them. We don't see your screen, don't store your data, and don't peek at your conversations.<span class="nerd-hint">For Nerds<span class="nerd-tooltip">Direct P2P connections with Fernet encryption. No server relay means your data never touches our infrastructure.</span></span></p>
+                </div>
+                
+                <div class="feature">
+                    <div class="feature-icon">⚡</div>
+                    <h3>Lightning Fast</h3>
+                    <p>See their screen instantly—no lag, no delays, no waiting. It's like you're sitting right next to them.<span class="nerd-hint">For Nerds<span class="nerd-tooltip">P2P architecture eliminates server bottlenecks. Typical latency: 10-50ms vs 100-500ms with server-based solutions.</span></span></p>
+                </div>
+                
+                <div class="feature">
+                    <div class="feature-icon">🎯</div>
+                    <h3>Dead Simple</h3>
+                    <p>They share a code like "happy-cloud". You type it in. Boom—you're connected. No tech degree required.<span class="nerd-hint">For Nerds<span class="nerd-tooltip">Word-pair code generation (e.g., adjective-noun) for easy memorization. No port forwarding or network configuration needed.</span></span></p>
+                </div>
+                
+                <div class="feature">
+                    <div class="feature-icon">💻</div>
+                    <h3>Full Control</h3>
+                    <p>Move their mouse, type on their keyboard, see exactly what they see. Fix problems yourself instead of trying to explain over the phone.<span class="nerd-hint">For Nerds<span class="nerd-tooltip">Real-time screen capture at 60 FPS with delta compression. Input events transmitted via encrypted socket connection.</span></span></p>
+                </div>
+                
+                <div class="feature">
+                    <div class="feature-icon">🔄</div>
+                    <h3>Works Both Ways</h3>
+                    <p>One app does it all. Help them, or let them help you. Switch modes anytime—no need to download different software.<span class="nerd-hint">For Nerds<span class="nerd-tooltip">Unified client/admin application with role switching. Supports both P2P direct connection and relay fallback for NAT traversal.</span></span></p>
+                </div>
+                
+                <div class="feature">
+                    <div class="feature-icon">🆓</div>
+                    <h3>Completely Free</h3>
+                    <p>No subscriptions, no credit cards, no "free trial" nonsense. Download it and use it forever for helping friends and family.<span class="nerd-hint">For Nerds<span class="nerd-tooltip">Open source available. Commercial use may require licensing. Free for personal/support use.</span></span></p>
+                </div>
+            </div>
+            
+            <div class="how-it-works">
+                <h2>How It Works</h2>
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <h3>Download</h3>
+                        <p>Download ShareFast.zip and extract it</p>
+                    </div>
+                    
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <h3>Share Screen</h3>
+                        <p>Client clicks "Share Screen" to get a connection code</p>
+                    </div>
+                    
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <h3>Connect</h3>
+                        <p>Admin enters the code to connect and control</p>
+                    </div>
+                    
+                    <div class="step">
+                        <div class="step-number">4</div>
+                        <h3>Help Remotely</h3>
+                        <p>See their screen and control their computer in real-time</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="security-note">
+                <h3>🔒 We Take Your Privacy Seriously</h3>
+                <p>
+                    Your conversations, screens, and data stay private. Everything is encrypted from start to finish, 
+                    and we never peek at what you're sharing. Built for trust—perfect for helping family members with sensitive information.
+                    <span class="nerd-hint">For Nerds<span class="nerd-tooltip">Fernet (symmetric encryption) for P2P data. AES-128 keys exchanged via signaling server. No session data stored—connections are ephemeral.</span></span>
+                </p>
+            </div>
+            
+            <div class="download-section">
+                <h2>Ready to Get Started?</h2>
+                <p>Download ShareFast now and start helping remotely in minutes</p>
+                <div id="version-info" style="margin-bottom: 25px; padding: 15px 20px; background: rgba(255,255,255,0.15); border-radius: 10px; display: inline-block; min-width: 200px;">
+                    <span style="font-size: 0.95em; opacity: 0.9;">Current Version: </span>
+                    <span id="version-number" style="font-weight: 700; font-size: 1.2em; color: white;">v1.1.1</span>
+                </div>
+                <div class="download-buttons">
+                    <a href="https://github.com/XDM-ZSBW/zip-sharefast-app/releases/latest/download/ShareFast.zip" class="btn btn-primary">
+                        📦 Download ShareFast.zip
+                    </a>
+                </div>
+                <div style="margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.1); border-radius: 10px; text-align: left; max-width: 600px; margin-left: auto; margin-right: auto;">
+                    <p style="font-size: 0.95em; margin-bottom: 10px;"><strong>💡 Why ZIP Package:</strong></p>
+                    <ul style="font-size: 0.9em; text-align: left; margin-left: 20px; opacity: 0.95;">
+                        <li>Easier to download (fewer browser security warnings)</li>
+                        <li>Includes helpful README.txt with instructions</li>
+                        <li>Less likely to trigger Windows SmartScreen warnings</li>
+                        <li>Simply extract and run - no installation needed</li>
+                    </ul>
+                    <p style="font-size: 0.85em; margin-top: 15px; opacity: 0.9; font-style: italic;">
+                        <strong>Note:</strong> If Windows shows a security warning, click "More info" then "Run anyway". 
+                        The app is safe - it's just unsigned. We're working on code signing for future releases.
+                    </p>
+                </div>
+                <p style="margin-top: 20px; font-size: 0.9em; opacity: 0.8;">
+                    Windows 10/11 • Requires no installation • Just extract and run
+                </p>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>&copy; 2025 ShareFast. Secure remote desktop control for friends and family.</p>
+            <p style="margin-top: 10px; font-size: 0.9em;">
+                Questions? Need help? Contact support at <a href="mailto:support@sharefast.zip" style="color: white; text-decoration: underline;">support@sharefast.zip</a>
+            </p>
+        </div>
+    </div>
+    
+    <script>
+        // Fetch and display current version directly from GitHub
+        async function loadVersion() {
+            const githubRepo = 'XDM-ZSBW/zip-sharefast-app';
+            const githubApiUrl = `https://api.github.com/repos/${githubRepo}/releases/latest`;
+            
+            // Check localStorage cache first (1 hour cache)
+            const cacheKey = 'sharefast_version_cache';
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+                try {
+                    const cacheData = JSON.parse(cached);
+                    const cacheAge = Date.now() - cacheData.timestamp;
+                    const cacheDuration = 3600000; // 1 hour in milliseconds
+                    
+                    if (cacheAge < cacheDuration && cacheData.version) {
+                        updateVersionDisplay(cacheData.version);
+                        // Still fetch in background to update cache
+                        fetchVersionFromGitHub(githubApiUrl, cacheKey, true);
+                        return;
+                    }
+                } catch (e) {
+                    // Invalid cache, continue to fetch
+                }
+            }
+            
+            // Fetch from GitHub
+            await fetchVersionFromGitHub(githubApiUrl, cacheKey, false);
+        }
+        
+        async function fetchVersionFromGitHub(apiUrl, cacheKey, silent) {
+            try {
+                // Fetch from public GitHub Releases API
+                const response = await fetch(apiUrl, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/vnd.github.v3+json',
+                        'User-Agent': 'ShareFast-Website'
+                    },
+                    // No credentials needed - using public API
+                    credentials: 'omit'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    if (data.tag_name) {
+                        // Extract version from tag (remove 'v' prefix if present)
+                        const version = data.tag_name.replace(/^v/i, '');
+                        
+                        // Update display
+                        updateVersionDisplay(version);
+                        
+                        // Cache in localStorage
+                        try {
+                            localStorage.setItem(cacheKey, JSON.stringify({
+                                version: version,
+                                timestamp: Date.now(),
+                                published_at: data.published_at,
+                                release_url: data.html_url
+                            }));
+                        } catch (e) {
+                            // localStorage might be disabled, ignore
+                        }
+                        
+                        if (!silent) {
+                            console.log('Version loaded from GitHub Releases:', version);
+                        }
+                        return;
+                    }
+                } else {
+                    // Handle different error cases
+                    if (response.status === 404) {
+                        if (!silent) {
+                            console.warn('GitHub repository or releases not found. Repository may be private or have no releases yet.');
+                        }
+                    } else if (response.status === 403) {
+                        if (!silent) {
+                            console.warn('GitHub API rate limit exceeded. Using cached or default version.');
+                        }
+                    } else {
+                        if (!silent) {
+                            console.warn('GitHub API returned status:', response.status);
+                        }
+                    }
+                }
+            } catch (error) {
+                if (!silent) {
+                    console.error('Failed to load version from GitHub Releases API:', error.message);
+                }
+            }
+            
+            // Fallback to default if not silent (first attempt)
+            if (!silent) {
+                const versionElement = document.getElementById('version-number');
+                if (versionElement) {
+                    versionElement.textContent = 'v1.2.2';
+                }
+                const quickVersion = document.getElementById('quick-version');
+                if (quickVersion) {
+                    quickVersion.textContent = 'v1.2.2';
+                }
+            }
+        }
+        
+        function updateVersionDisplay(version) {
+            // Update version in download section
+            const versionElement = document.getElementById('version-number');
+            if (versionElement) {
+                versionElement.textContent = 'v' + version;
+            }
+            
+            // Update quick download button
+            const quickVersion = document.getElementById('quick-version');
+            if (quickVersion) {
+                quickVersion.textContent = 'v' + version;
+            }
+        }
+        
+        // Load version on page load
+        loadVersion();
+    </script>
+</body>
+</html>

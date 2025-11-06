@@ -1,0 +1,21 @@
+# Apache .htaccess for API directory
+# API endpoints are PUBLIC (required for desktop app) but secured with rate limiting
+
+# Disable directory listing
+Options -Indexes
+
+# Security headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "DENY"
+    Header set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# Note: API endpoints are public for desktop app functionality
+# Security is handled via:
+# - Rate limiting (PHP-based, 100 requests/minute per IP)
+# - Session-based authentication (code + session_id)
+# - Input validation (in PHP code)
+# - Apache mod_ratelimit (if available)
+
+

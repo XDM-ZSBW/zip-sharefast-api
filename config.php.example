@@ -1,0 +1,52 @@
+<?php
+/**
+ * ShareFast Server Configuration Template
+ * Copy this file to config.php and update with your actual credentials
+ * 
+ * IMPORTANT: config.php is ignored by git and should NOT be committed
+ */
+
+// Database configuration (MySQL)
+define('DB_HOST', 'localhost');
+define('DB_NAME', 'your_database_name');
+define('DB_USER', 'your_database_user');
+define('DB_PASS', 'your_database_password');  // Set your actual password here
+
+// Session configuration
+define('SESSION_TIMEOUT', 3600); // 1 hour
+define('CODE_EXPIRY', 1800); // 30 minutes
+
+// Security
+define('ALLOWED_ORIGINS', array('https://connect.futurelink.zip', 'http://localhost'));
+
+// Storage method: 'file' or 'database'
+define('STORAGE_METHOD', 'database');  // Changed to database
+
+// File storage path (relative to this file)
+define('STORAGE_PATH', __DIR__ . '/storage/');
+
+// Enable CORS headers
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: POST, GET, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type');
+header('Content-Type: application/json');
+
+// Handle preflight requests
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
+
+// Create storage directory if using file storage
+if (STORAGE_METHOD === 'file' && !is_dir(STORAGE_PATH)) {
+    mkdir(STORAGE_PATH, 0755, true);
+}
+
+// Seed Admin Hash - Set this to the hash of your initial admin email
+// Generate hash using: php -r "echo hash('sha256', strtolower(trim('your_email@example.com')));"
+// Or use the Python script: python generate_seed_hash.py your_email@example.com
+// IMPORTANT: Replace this with your actual seed admin email hash
+define('SEED_ADMIN_HASH', '0fb62de1094f3800f82868639312936ff192501356fc567597779bf0aa2e73a3');
+
+?>
+
