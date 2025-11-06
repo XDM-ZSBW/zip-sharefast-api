@@ -21,7 +21,7 @@ $cache_file = __DIR__ . '/version_cache.json';
 $cache_duration = 3600; // 1 hour in seconds
 
 // Default version (fallback)
-$default_version = '1.0.1';
+$default_version = '1.3.4';
 
 /**
  * Fetch latest version from GitHub API
