@@ -134,8 +134,8 @@ $code = strtolower($code);  // Ensure code is lowercase to match database storag
 $signal_type = $input['type'];
 $data = $input['data'];
 
-// Allow WebRTC signals and custom signals like admin_connected
-$allowed_types = ['offer', 'answer', 'ice-candidate', 'admin_connected', 'admin_disconnected', 'client_ready', 'peer_info', 'p2p_connect_request', 'p2p_ready'];
+    // Allow WebRTC signals and custom signals like admin_connected
+    $allowed_types = ['offer', 'answer', 'ice-candidate', 'admin_connected', 'admin_disconnected', 'client_ready', 'peer_info', 'p2p_connect_request', 'p2p_ready', 'clipboard_paste_request', 'clipboard_paste_approved', 'clipboard_paste_rejected'];
 if (!in_array($signal_type, $allowed_types)) {
     echo json_encode(['success' => false, 'message' => 'Invalid signal type']);
     exit;
