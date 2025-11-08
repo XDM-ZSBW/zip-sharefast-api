@@ -423,20 +423,69 @@ wss.on('connection', (ws, req) => {
                 }
                 
                 const typeByte = message[0];
-                const dataLength = message.readUInt32BE(1);
-                const data = message.slice(5, 5 + dataLength);
+                
+                // Parse frame format: [type:1byte][flags:1byte][metadata_length:2bytes][metadata:bytes][frame_length:4bytes][frame_data:bytes]
+                let frameData, cursorX, cursorY;
+                if (typeByte === 0x01) {
+                    // Frame with optional cursor metadata
+                    if (message.length < 8) {
+                        // Old format: [type:1byte][length:4bytes][data:bytes] - backward compatibility
+                        const dataLength = message.readUInt32BE(1);
+                        frameData = message.slice(5, 5 + dataLength);
+                        cursorX = null;
+                        cursorY = null;
+                    } else {
+                        // New format: [type:1byte][flags:1byte][metadata_length:2bytes][metadata:bytes][frame_length:4bytes][frame_data:bytes]
+                        const flags = message[1];
+                        const metadataLength = message.readUInt16BE(2);
+                        let offset = 4;
+                        
+                        // Extract cursor from metadata if present
+                        cursorX = null;
+                        cursorY = null;
+                        if (flags & 0x01) {
+                            // Has cursor metadata
+                            if (metadataLength >= 8) {
+                                cursorX = message.readUInt32BE(offset);
+                                cursorY = message.readUInt32BE(offset + 4);
+                                offset += 8;
+                                
+                                // Log cursor extraction for debugging
+                                if (!session._frame_cursor_count) session._frame_cursor_count = 0;
+                                session._frame_cursor_count++;
+                                if (session._frame_cursor_count <= 10 || session._frame_cursor_count % 30 === 0) {
+                                    console.log(`[CURSOR-FRAME] Extracted cursor from frame #${session._frame_cursor_count} from ${sessionId} (${mode}): (${cursorX}, ${cursorY})`);
+                                }
+                            }
+                        } else {
+                            // Skip metadata if no cursor
+                            offset += metadataLength;
+                        }
+                        
+                        // Extract frame data
+                        const frameLength = message.readUInt32BE(offset);
+                        offset += 4;
+                        frameData = message.slice(offset, offset + frameLength);
+                    }
+                } else {
+                    // Non-frame message: [type:1byte][length:4bytes][data:bytes] - old format
+                    const dataLength = message.readUInt32BE(1);
+                    frameData = message.slice(5, 5 + dataLength);
+                    cursorX = null;
+                    cursorY = null;
+                }
                 
                 // Log ALL binary messages for first few to debug cursor issue
                 if (!session._binary_msg_count) session._binary_msg_count = 0;
                 session._binary_msg_count++;
                 // Log first 100 binary messages, or any cursor messages (type 0x04)
                 if (session._binary_msg_count <= 100 || typeByte === 0x04) {
-                    console.log(`[DEBUG] Binary message #${session._binary_msg_count} from ${sessionId} (${mode}): typeByte=0x${typeByte.toString(16).padStart(2, '0')}, dataLength=${dataLength}, messageLength=${message.length}`);
+                    console.log(`[DEBUG] Binary message #${session._binary_msg_count} from ${sessionId} (${mode}): typeByte=0x${typeByte.toString(16).padStart(2, '0')}, dataLength=${frameData.length}, messageLength=${message.length}, hasCursor=${cursorX !== null}`);
                 }
                 
-                if (data.length !== dataLength) {
+                if (frameData.length === 0) {
                     if (DEBUG || session._binary_msg_count <= 10) {
-                        console.error(`[WebSocket] Invalid binary message length: expected ${dataLength}, got ${data.length} from ${sessionId} (${mode})`);
+                        console.error(`[WebSocket] Invalid binary message: empty data from ${sessionId} (${mode})`);
                     }
                     return;
                 }
@@ -477,6 +526,28 @@ wss.on('connection', (ws, req) => {
                     } catch (e) {
                         // Always log parse errors
                         console.log(`[CURSOR] Parse error for cursor #${session._cursor_count} from ${sessionId} (${mode}): ${e.message}, data preview: ${data.toString('utf-8').substring(0, 100)}`);
+                    }
+                }
+                
+                // If cursor was extracted from frame metadata, send it separately to admin
+                if (dataType === 'frame' && cursorX !== null && cursorY !== null && mode === 'client') {
+                    // Send cursor position as separate message to admin
+                    const cursorData = JSON.stringify({ type: 'cursor', x: cursorX, y: cursorY });
+                    const cursorMessage = Buffer.concat([
+                        Buffer.from([0x04]),  // Type: cursor
+                        Buffer.allocUnsafe(4),
+                        Buffer.from(cursorData, 'utf-8')
+                    ]);
+                    cursorMessage.writeUInt32BE(cursorData.length, 1);
+                    
+                    // Forward cursor to admin if peer is connected
+                    if (session.peerWs && session.peerWs.readyState === WebSocket.OPEN) {
+                        if (!session._frame_cursor_sent_count) session._frame_cursor_sent_count = 0;
+                        session._frame_cursor_sent_count++;
+                        if (session._frame_cursor_sent_count <= 10 || session._frame_cursor_sent_count % 30 === 0) {
+                            console.log(`[CURSOR-FRAME] Forwarding cursor from frame to admin: (${cursorX}, ${cursorY})`);
+                        }
+                        session.peerWs.send(cursorMessage, { binary: true });
                     }
                 }
                 
