@@ -186,11 +186,34 @@ wss.on('connection', (ws, req) => {
     let session = {
         ws: ws,
         mode: mode,
+        code: code,  // Store code for peer lookup
         peerId: null,
         peerWs: null
     };
     
     activeSessions.set(sessionId, session);
+    
+    // CRITICAL: Before calling getPeerId, check if peer is already connected in activeSessions
+    // This handles the case where one peer connects before the other
+    // Strategy: Look through all active sessions to find a peer with the same code
+    let foundPeer = null;
+    for (const [existingSessionId, existingSession] of activeSessions.entries()) {
+        if (existingSessionId !== sessionId && 
+            existingSession.code === code && 
+            existingSession.mode !== mode &&
+            existingSession.ws && 
+            existingSession.ws.readyState === WebSocket.OPEN) {
+            // Found peer! Link them immediately
+            foundPeer = existingSession;
+            session.peerWs = existingSession.ws;
+            existingSession.peerWs = session.ws;
+            // Set peerId for both sessions
+            session.peerId = existingSessionId;
+            existingSession.peerId = sessionId;
+            console.error(`[PEER-LINK] Immediate peer linking via activeSessions: ${sessionId} (${mode}) <-> ${existingSessionId} (${existingSession.mode})`);
+            break;
+        }
+    }
     
     // Call getPeerId immediately and log it
     if (PEER_DEBUG) console.log(`[WebSocket] Calling getPeerId for ${sessionId} (${mode}) with code ${code}`);
