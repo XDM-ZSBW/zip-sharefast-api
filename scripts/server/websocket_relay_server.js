@@ -247,12 +247,20 @@ wss.on('connection', (ws, req) => {
     });
     
     // REBUILT: Simplified message handler for binary and text messages
-    console.log(`[WebSocket] Attaching message handler for ${sessionId} (${mode})`);
+    // CRITICAL: This MUST execute - log immediately
+    console.log(`[WebSocket] *** Attaching message handler for ${sessionId} (${mode}) ***`);
+    console.log(`[WebSocket] *** Message handler attachment starting NOW ***`);
     
     // Initialize message counters for logging
     if (!session._msg_count) session._msg_count = 0;
     
+    // CRITICAL: Attach message handler - this MUST work
     ws.on('message', (message, isBinary) => {
+        // CRITICAL: Log immediately when handler is called
+        if (!session._handler_called) {
+            session._handler_called = true;
+            console.log(`[WebSocket] *** Message handler CALLED for ${sessionId} (${mode}) ***`);
+        }
         session._msg_count++;
         
         // Log first 10 messages to verify handler is working
