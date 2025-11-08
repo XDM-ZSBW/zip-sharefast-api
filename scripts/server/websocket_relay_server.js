@@ -323,15 +323,6 @@ wss.on('connection', (ws, req) => {
         }
         
         try {
-            // Log ALL messages for first 50 to debug cursor issue
-            if (!session._all_msg_count) session._all_msg_count = 0;
-            session._all_msg_count++;
-            if (session._all_msg_count <= 50) {
-                const msgType = typeof message;
-                const msgLen = Buffer.isBuffer(message) ? message.length : (typeof message === 'string' ? message.length : 'unknown');
-                const preview = typeof message === 'string' ? message.substring(0, 100) : (Buffer.isBuffer(message) ? message.toString('utf-8', 0, Math.min(100, message.length)) : 'N/A');
-                console.log(`[DEBUG] Message #${session._all_msg_count} from ${sessionId} (${mode}): type=${msgType}, isBinary=${isBinary}, length=${msgLen}, isBuffer=${Buffer.isBuffer(message)}, preview=${preview}`);
-            }
             
             // Ensure message is treated as binary if it's a Buffer
             if (Buffer.isBuffer(message)) {
