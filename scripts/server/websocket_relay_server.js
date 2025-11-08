@@ -213,8 +213,8 @@ wss.on('connection', (ws, req) => {
     const code = url.searchParams.get('code');
     const mode = url.searchParams.get('mode') || 'client';
     
-    // CRITICAL: Log connection to verify handler is being called
-    console.log(`[CRITICAL] Connection handler CALLED for ${sessionId} (${mode}), code=${code}`);
+    // Log connection to verify handler is being called
+    console.log(`[WebSocket] Connection handler CALLED for ${sessionId} (${mode}), code=${code}`);
     
     // Verify SSL connection
     if (!req.socket || !req.socket.encrypted) {
@@ -305,12 +305,12 @@ wss.on('connection', (ws, req) => {
     
     // OPTIMIZATION: Handle both JSON (backward compat) and binary messages
     // CRITICAL: Handle 'message' event - this should receive ALL messages (text and binary)
-    console.log(`[CRITICAL] Attaching message handler for ${sessionId} (${mode})`);
+    console.log(`[WebSocket] Attaching message handler for ${sessionId} (${mode})`);
     ws.on('message', (message, isBinary) => {
         // ALWAYS log EVERY message for first 100 to verify handler is being called
         if (!session._handler_called) {
             session._handler_called = true;
-            console.log(`[CRITICAL] Message handler CALLED for ${sessionId} (${mode}): isBinary=${isBinary}, type=${typeof message}, isBuffer=${Buffer.isBuffer(message)}, length=${Buffer.isBuffer(message) ? message.length : (typeof message === 'string' ? message.length : 'unknown')}`);
+            console.log(`[WebSocket] Message handler CALLED for ${sessionId} (${mode}): isBinary=${isBinary}, type=${typeof message}, isBuffer=${Buffer.isBuffer(message)}, length=${Buffer.isBuffer(message) ? message.length : (typeof message === 'string' ? message.length : 'unknown')}`);
         }
         // Log ALL messages (text and binary) for first 100 to debug cursor issue
         if (!session._all_msg_count) session._all_msg_count = 0;
@@ -319,7 +319,7 @@ wss.on('connection', (ws, req) => {
             const msgType = typeof message;
             const msgLen = Buffer.isBuffer(message) ? message.length : (typeof message === 'string' ? message.length : 'unknown');
             const preview = typeof message === 'string' ? message.substring(0, 150) : (Buffer.isBuffer(message) && message.length > 0 ? 'BINARY' : 'EMPTY');
-            console.log(`[CRITICAL] Message #${session._all_msg_count} from ${sessionId} (${mode}): isBinary=${isBinary}, type=${msgType}, length=${msgLen}, preview=${preview}`);
+            console.log(`[WebSocket] Message #${session._all_msg_count} from ${sessionId} (${mode}): isBinary=${isBinary}, type=${msgType}, length=${msgLen}, preview=${preview}`);
         }
         
         try {
