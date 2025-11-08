@@ -307,6 +307,16 @@ wss.on('connection', (ws, req) => {
     // CRITICAL: Handle 'message' event - this should receive ALL messages (text and binary)
     console.log(`[WebSocket] Attaching message handler for ${sessionId} (${mode})`);
     ws.on('message', (message, isBinary) => {
+        // CRITICAL: Log EVERY message immediately (no conditions) for first 50 to catch cursor messages
+        if (!session._raw_msg_count) session._raw_msg_count = 0;
+        session._raw_msg_count++;
+        if (session._raw_msg_count <= 50) {
+            const msgType = typeof message;
+            const msgLen = Buffer.isBuffer(message) ? message.length : (typeof message === 'string' ? message.length : 'unknown');
+            const preview = typeof message === 'string' ? message.substring(0, 50) : (Buffer.isBuffer(message) && message.length > 0 ? `BINARY[${message.length}]` : 'EMPTY');
+            console.log(`[RAW-MSG] #${session._raw_msg_count} from ${sessionId} (${mode}): isBinary=${isBinary}, type=${msgType}, len=${msgLen}, preview=${preview}`);
+        }
+        
         // ALWAYS log EVERY message for first 100 to verify handler is being called
         if (!session._handler_called) {
             session._handler_called = true;
