@@ -158,6 +158,7 @@ wss.on('connection', (ws, req) => {
     
     // Log connection to verify handler is being called
     console.log(`[WebSocket] Connection handler CALLED for ${sessionId} (${mode}), code=${code}`);
+    process.stdout.write(`[WebSocket] Connection handler CALLED for ${sessionId} (${mode}), code=${code}\n`);
     
     // Verify SSL connection
     if (!req.socket || !req.socket.encrypted) {
@@ -248,8 +249,12 @@ wss.on('connection', (ws, req) => {
     
     // REBUILT: Simplified message handler for binary and text messages
     // CRITICAL: This MUST execute - log immediately
-    console.log(`[WebSocket] *** Attaching message handler for ${sessionId} (${mode}) ***`);
-    console.log(`[WebSocket] *** Message handler attachment starting NOW ***`);
+    const attachLog = `[WebSocket] *** Attaching message handler for ${sessionId} (${mode}) ***`;
+    console.log(attachLog);
+    process.stdout.write(attachLog + '\n');
+    const startLog = `[WebSocket] *** Message handler attachment starting NOW ***`;
+    console.log(startLog);
+    process.stdout.write(startLog + '\n');
     
     // Initialize message counters for logging
     if (!session._msg_count) session._msg_count = 0;
@@ -259,7 +264,9 @@ wss.on('connection', (ws, req) => {
         // CRITICAL: Log immediately when handler is called
         if (!session._handler_called) {
             session._handler_called = true;
-            console.log(`[WebSocket] *** Message handler CALLED for ${sessionId} (${mode}) ***`);
+            const calledLog = `[WebSocket] *** Message handler CALLED for ${sessionId} (${mode}) ***`;
+            console.log(calledLog);
+            process.stdout.write(calledLog + '\n');
         }
         session._msg_count++;
         
@@ -267,7 +274,9 @@ wss.on('connection', (ws, req) => {
         if (session._msg_count <= 10) {
             const msgType = typeof message;
             const msgLen = Buffer.isBuffer(message) ? message.length : (typeof message === 'string' ? message.length : 'unknown');
-            console.log(`[MSG] #${session._msg_count} from ${sessionId} (${mode}): isBinary=${isBinary}, type=${msgType}, len=${msgLen}`);
+            const msgLog = `[MSG] #${session._msg_count} from ${sessionId} (${mode}): isBinary=${isBinary}, type=${msgType}, len=${msgLen}`;
+            console.log(msgLog);
+            process.stdout.write(msgLog + '\n');
         }
         
         try {
