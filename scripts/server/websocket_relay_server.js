@@ -70,23 +70,10 @@ const wss = new WebSocket.Server({
         }
         return true;
     },
-    // OPTIMIZATION: Disable compression for lower CPU usage (frames are already JPEG compressed)
-    // Keep only minimal compression for small messages
-    perMessageDeflate: {
-        zlibDeflateOptions: {
-            chunkSize: 1024,
-            memLevel: 7,
-            level: 1  // Reduced from 3 to 1 for lower CPU usage
-        },
-        zlibInflateOptions: {
-            chunkSize: 10 * 1024
-        },
-        clientNoContextTakeover: true,
-        serverNoContextTakeover: true,
-        serverMaxWindowBits: 10,
-        concurrencyLimit: 5,  // Reduced from 10
-        threshold: 10240  // Increased threshold - only compress messages >10KB
-    }
+    // NAT-friendly: Disable compression entirely to avoid packet fragmentation issues
+    // Compression can cause SSL/TLS record MAC errors when packets are fragmented by NAT
+    // Frames are already JPEG compressed, so additional compression provides minimal benefit
+    perMessageDeflate: false
 });
 
 console.log(`[WebSocket] SSL enabled - using certificates:`);
