@@ -245,6 +245,23 @@ wss.on('connection', (ws, req) => {
             if (PEER_DEBUG) {
                 console.log(`[WebSocket] Peer not found yet for ${sessionId} (${mode}), peerId=${peerId || 'null'} - peer may connect later`);
             }
+        } else {
+            // Peer was found and linked - log it
+            console.error(`[PEER-LINK] Peers linked in getPeerId callback: ${sessionId} (${mode}) <-> ${peerId} (${peerSession.mode})`);
+        }
+        
+        // CRITICAL: After getPeerId completes, check if peer is now connected and link them
+        // This handles the case where admin connects first, then client connects
+        if (peerId) {
+            const peerSession = activeSessions.get(peerId);
+            if (peerSession && peerSession.mode !== mode && peerSession.ws && peerSession.ws.readyState === WebSocket.OPEN) {
+                // Peer is now connected - link them
+                if (!session.peerWs || session.peerWs !== peerSession.ws) {
+                    session.peerWs = peerSession.ws;
+                    peerSession.peerWs = session.ws;
+                    console.error(`[PEER-LINK] Late peer linking in getPeerId callback: ${sessionId} (${mode}) <-> ${peerId} (${peerSession.mode})`);
+                }
+            }
         }
     });
     
@@ -370,6 +387,9 @@ wss.on('connection', (ws, req) => {
                 // Forward to peer
                 if (session.peerWs && session.peerWs.readyState === WebSocket.OPEN) {
                     // Direct forwarding
+                    if (session._msg_count <= 5 || session._msg_count % 20 === 0) {
+                        console.error(`[FORWARD] Forwarding ${dataType} #${session._msg_count} directly via peerWs`);
+                    }
                     session.peerWs.send(buffer, { binary: true });
                 } else {
                     // Try to find peer
@@ -378,12 +398,23 @@ wss.on('connection', (ws, req) => {
                         const peerSession = activeSessions.get(targetPeerId);
                         if (peerSession && peerSession.mode !== mode && peerSession.ws && peerSession.ws.readyState === WebSocket.OPEN) {
                             // Link and forward
+                            if (session._msg_count <= 5) {
+                                console.error(`[FORWARD] Linking peers and forwarding ${dataType} #${session._msg_count} to ${targetPeerId}`);
+                            }
                             session.peerWs = peerSession.ws;
                             peerSession.peerWs = session.ws;
                             peerSession.ws.send(buffer, { binary: true });
                         } else {
                             // Buffer for later
+                            if (session._msg_count <= 5) {
+                                console.error(`[FORWARD] Peer not found or not ready, buffering ${dataType} #${session._msg_count} (peerId=${targetPeerId}, peerSession=${peerSession ? 'exists' : 'null'}, peerWs=${peerSession && peerSession.ws ? 'exists' : 'null'})`);
+                            }
                             forwardToPeer(targetPeerId, dataType, data);
+                        }
+                    } else {
+                        // No peerId yet
+                        if (session._msg_count <= 5) {
+                            console.error(`[FORWARD] No peerId for ${sessionId} (${mode}), cannot forward ${dataType} #${session._msg_count}`);
                         }
                     }
                 }
