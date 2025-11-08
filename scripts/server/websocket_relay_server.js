@@ -439,10 +439,12 @@ wss.on('connection', (ws, req) => {
                 // TEXT/JSON protocol (text messages)
                 // Log that we're handling a text message
                 if (session._all_msg_count <= 50) {
-                    console.log(`[DEBUG] Processing TEXT message from ${sessionId} (${mode}): ${message.toString().substring(0, 200)}`);
+                    console.log(`[WebSocket] Processing TEXT message from ${sessionId} (${mode}): isBinary=${isBinary}, message type=${typeof message}, preview=${message.toString().substring(0, 200)}`);
                 }
                 try {
-                    const data = JSON.parse(message.toString());
+                    // Ensure message is a string before parsing
+                    const messageStr = typeof message === 'string' ? message : message.toString('utf-8');
+                    const data = JSON.parse(messageStr);
                     
                     // Handle cursor position messages (sent as text JSON)
                     if (data.type === 'cursor') {
@@ -520,8 +522,14 @@ wss.on('connection', (ws, req) => {
                     }
                 } catch (parseError) {
                     // Not valid JSON - might be a text message we don't recognize
-                    if (session._all_msg_count <= 5) {
-                        console.log(`[DEBUG] Failed to parse text message as JSON from ${sessionId} (${mode}): ${parseError.message}, message preview: ${message.toString().substring(0, 100)}`);
+                    // But don't log if it's a binary frame that was misclassified
+                    if (Buffer.isBuffer(message) && message.length > 0 && message[0] === 0x01) {
+                        // This is actually a binary frame (starts with 0x01 = frame type)
+                        // Don't log as error - it was misclassified as text
+                        return;
+                    }
+                    if (session._all_msg_count <= 10) {
+                        console.log(`[WebSocket] Failed to parse text message as JSON from ${sessionId} (${mode}): ${parseError.message}, isBinary=${isBinary}, message type=${typeof message}, preview: ${typeof message === 'string' ? message.substring(0, 100) : (Buffer.isBuffer(message) ? 'BINARY' : 'UNKNOWN')}`);
                     }
                 }
             }
@@ -530,12 +538,13 @@ wss.on('connection', (ws, req) => {
             if (error.code === 'WS_ERR_INVALID_UTF8' || 
                 error.message?.includes('Invalid UTF-8') ||
                 error.message?.includes('Unexpected token') ||
-                error.name === 'SyntaxError' && error.message?.includes('JSON')) {
-                // This is expected for binary frames - ignore it
+                (error.name === 'SyntaxError' && error.message?.includes('JSON'))) {
+                // This is expected for binary frames - ignore it silently
                 // The message should still be passed to our handler with isBinary=true
                 return;
             }
-            if (DEBUG) console.error('[WebSocket] Message error:', error);
+            // Only log non-suppressed errors
+            console.error('[WebSocket] Message error (not suppressed):', error.message || error);
         }
     });
     
