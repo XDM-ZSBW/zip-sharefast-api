@@ -66,6 +66,9 @@ def deploy_files():
         ("server/api/version.php", "api/version.php"),
         ("server/api/rate_limit.php", "api/rate_limit.php"),
         ("server/api/ssl_error_handler.php", "api/ssl_error_handler.php"),
+        ("server/api/test_frame_flow.php", "api/test_frame_flow.php"),
+        ("server/api/test_signals.php", "api/test_signals.php"),
+        ("server/api/test_signal_routing.php", "api/test_signal_routing.php"),
         
         # Migration script for database optimizations
         ("server/apply_relay_optimization.php", "apply_relay_optimization.php"),
