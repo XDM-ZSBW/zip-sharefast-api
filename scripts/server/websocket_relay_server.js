@@ -461,12 +461,14 @@ wss.on('connection', (ws, req) => {
                 }
             } else {
                 // TEXT/JSON protocol (text messages)
+                // Note: message might have been converted from binary above (cursor detection)
                 // Log that we're handling a text message
                 if (session._all_msg_count <= 50) {
-                    console.log(`[WebSocket] Processing TEXT message from ${sessionId} (${mode}): isBinary=${isBinary}, message type=${typeof message}, preview=${message.toString().substring(0, 200)}`);
+                    console.log(`[WebSocket] Processing TEXT message from ${sessionId} (${mode}): isBinary=${isBinary}, message type=${typeof message}, preview=${(typeof message === 'string' ? message : message.toString('utf-8')).substring(0, 200)}`);
                 }
                 try {
                     // Ensure message is a string before parsing
+                    // (message might have been converted from binary in the cursor detection above)
                     const messageStr = typeof message === 'string' ? message : message.toString('utf-8');
                     const data = JSON.parse(messageStr);
                     
