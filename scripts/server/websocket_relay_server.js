@@ -303,6 +303,15 @@ wss.on('connection', (ws, req) => {
     // OPTIMIZATION: Handle both JSON (backward compat) and binary messages
     ws.on('message', (message, isBinary) => {
         try {
+            // Log ALL messages for first few to debug cursor issue
+            if (!session._all_msg_count) session._all_msg_count = 0;
+            session._all_msg_count++;
+            if (session._all_msg_count <= 20) {
+                const msgType = typeof message;
+                const msgLen = Buffer.isBuffer(message) ? message.length : (typeof message === 'string' ? message.length : 'unknown');
+                console.log(`[DEBUG] Message #${session._all_msg_count} from ${sessionId} (${mode}): type=${msgType}, isBinary=${isBinary}, length=${msgLen}, isBuffer=${Buffer.isBuffer(message)}`);
+            }
+            
             // Ensure message is treated as binary if it's a Buffer
             if (Buffer.isBuffer(message)) {
                 isBinary = true;
