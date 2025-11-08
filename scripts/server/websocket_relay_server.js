@@ -431,44 +431,89 @@ wss.on('connection', (ws, req) => {
                     }
                 }
             } else {
-                // JSON protocol (backward compatibility)
-                const data = JSON.parse(message.toString());
-                
-                if (data.type === 'send_frame' || data.type === 'send_input') {
-                    if (!peerId) {
-                        ws.send(JSON.stringify({ type: 'error', message: 'Peer not connected yet' }));
-                        return;
+                // TEXT/JSON protocol (text messages)
+                try {
+                    const data = JSON.parse(message.toString());
+                    
+                    // Handle cursor position messages (sent as text JSON)
+                    if (data.type === 'cursor') {
+                        if (!session._cursor_count) session._cursor_count = 0;
+                        session._cursor_count++;
+                        
+                        if (session._cursor_count <= 10 || session._cursor_count % 30 === 0) {
+                            console.log(`[CURSOR] Received cursor from ${sessionId} (${mode}): (${data.x}, ${data.y}), peerWs=${session.peerWs ? 'set' : 'null'}, peerId=${session.peerId || 'null'}`);
+                        }
+                        
+                        // Forward cursor to peer
+                        if (session.peerWs && session.peerWs.readyState === WebSocket.OPEN) {
+                            // Forward as text JSON (same format)
+                            if (session._cursor_count <= 5 || session._cursor_count % 30 === 0) {
+                                console.log(`[CURSOR] Forwarding cursor to peer via peerWs`);
+                            }
+                            session.peerWs.send(message.toString(), { binary: false });
+                        } else {
+                            // Peer not connected - try to find and link
+                            const targetPeerId = session.peerId;
+                            if (targetPeerId) {
+                                const peerSession = activeSessions.get(targetPeerId);
+                                if (peerSession && peerSession.mode !== mode && peerSession.ws && peerSession.ws.readyState === WebSocket.OPEN) {
+                                    // Link and forward
+                                    session.peerWs = peerSession.ws;
+                                    peerSession.peerWs = session.ws;
+                                    peerSession.ws.send(message.toString(), { binary: false });
+                                } else {
+                                    // Buffer for later (cursor positions are time-sensitive, but buffer anyway)
+                                    if (session._cursor_count <= 5) {
+                                        console.log(`[CURSOR] Peer not found, cannot forward cursor`);
+                                    }
+                                }
+                            }
+                        }
+                        return; // Cursor handled
                     }
                     
-                    const relayType = data.type === 'send_frame' ? 'frame' : 'input';
-                    
-                    // Convert base64 to buffer if needed
-                    let frameData;
-                    if (typeof data.data === 'string') {
-                        frameData = Buffer.from(data.data, 'base64');
-                    } else {
-                        frameData = Buffer.from(data.data);
+                    // Handle legacy JSON protocol (backward compatibility)
+                    if (data.type === 'send_frame' || data.type === 'send_input') {
+                        if (!peerId) {
+                            ws.send(JSON.stringify({ type: 'error', message: 'Peer not connected yet' }));
+                            return;
+                        }
+                        
+                        const relayType = data.type === 'send_frame' ? 'frame' : 'input';
+                        
+                        // Convert base64 to buffer if needed
+                        let frameData;
+                        if (typeof data.data === 'string') {
+                            frameData = Buffer.from(data.data, 'base64');
+                        } else {
+                            frameData = Buffer.from(data.data);
+                        }
+                        
+                        // Forward directly to peer if connected
+                        if (session.peerWs && session.peerWs.readyState === WebSocket.OPEN) {
+                            // Send as binary for better performance
+                            const typeByte = relayType === 'frame' ? 0x01 : relayType === 'input' ? 0x02 : relayType === 'cursor' ? 0x04 : 0x01;
+                            const lengthBuffer = Buffer.allocUnsafe(4);
+                            lengthBuffer.writeUInt32BE(frameData.length, 0);
+                            const binaryMessage = Buffer.concat([
+                                Buffer.from([typeByte]),
+                                lengthBuffer,
+                                frameData
+                            ]);
+                            session.peerWs.send(binaryMessage, { binary: true });
+                        } else {
+                            // Store in buffer
+                            forwardToPeer(peerId, relayType, frameData);
+                        }
+                        
+                        // Send acknowledgment
+                        ws.send(JSON.stringify({ type: 'ack', success: true }));
                     }
-                    
-                    // Forward directly to peer if connected
-                    if (session.peerWs && session.peerWs.readyState === WebSocket.OPEN) {
-                        // Send as binary for better performance
-                        const typeByte = relayType === 'frame' ? 0x01 : relayType === 'input' ? 0x02 : relayType === 'cursor' ? 0x04 : 0x01;
-                        const lengthBuffer = Buffer.allocUnsafe(4);
-                        lengthBuffer.writeUInt32BE(frameData.length, 0);
-                        const binaryMessage = Buffer.concat([
-                            Buffer.from([typeByte]),
-                            lengthBuffer,
-                            frameData
-                        ]);
-                        session.peerWs.send(binaryMessage, { binary: true });
-                    } else {
-                        // Store in buffer
-                        forwardToPeer(peerId, relayType, frameData);
+                } catch (parseError) {
+                    // Not valid JSON - might be a text message we don't recognize
+                    if (session._all_msg_count <= 5) {
+                        console.log(`[DEBUG] Failed to parse text message as JSON from ${sessionId} (${mode}): ${parseError.message}, message preview: ${message.toString().substring(0, 100)}`);
                     }
-                    
-                    // Send acknowledgment
-                    ws.send(JSON.stringify({ type: 'ack', success: true }));
                 }
             }
         } catch (error) {
