@@ -429,7 +429,8 @@ wss.on('connection', (ws, req) => {
                 // Log ALL binary messages for first few to debug cursor issue
                 if (!session._binary_msg_count) session._binary_msg_count = 0;
                 session._binary_msg_count++;
-                if (session._binary_msg_count <= 10) {
+                // Log first 100 binary messages, or any cursor messages (type 0x04)
+                if (session._binary_msg_count <= 100 || typeByte === 0x04) {
                     console.log(`[DEBUG] Binary message #${session._binary_msg_count} from ${sessionId} (${mode}): typeByte=0x${typeByte.toString(16).padStart(2, '0')}, dataLength=${dataLength}, messageLength=${message.length}`);
                 }
                 
@@ -464,17 +465,17 @@ wss.on('connection', (ws, req) => {
                 if (dataType === 'cursor') {
                     if (!session._cursor_count) session._cursor_count = 0;
                     session._cursor_count++;
-                    // Always log first 10 cursor messages for debugging
-                    if (session._cursor_count <= 10) {
+                    // ALWAYS log cursor messages (first 100, then every 30th) for debugging
+                    if (session._cursor_count <= 100 || session._cursor_count % 30 === 0) {
                         console.log(`[CURSOR] Received cursor message #${session._cursor_count} from ${sessionId} (${mode}), data length=${data.length}, peerWs=${session.peerWs ? 'set' : 'null'}, peerId=${session.peerId || 'null'}`);
                     }
                     try {
                         const cursorData = JSON.parse(data.toString('utf-8'));
-                        if (session._cursor_count <= 10 || session._cursor_count % 30 === 0) {
+                        if (session._cursor_count <= 100 || session._cursor_count % 30 === 0) {
                             console.log(`[CURSOR] Parsed cursor from ${sessionId} (${mode}): (${cursorData.x}, ${cursorData.y}), peerWs=${session.peerWs ? 'set' : 'null'}, peerId=${session.peerId || 'null'}`);
                         }
                     } catch (e) {
-                        // Always log parse errors for first 10
+                        // Always log parse errors
                         console.log(`[CURSOR] Parse error for cursor #${session._cursor_count} from ${sessionId} (${mode}): ${e.message}, data preview: ${data.toString('utf-8').substring(0, 100)}`);
                     }
                 }
