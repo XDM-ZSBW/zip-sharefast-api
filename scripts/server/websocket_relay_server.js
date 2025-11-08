@@ -324,15 +324,18 @@ wss.on('connection', (ws, req) => {
         
         // SPECIAL: Check if binary message might actually be text (cursor JSON)
         // Sometimes websocket-client sends strings as binary with UTF-8 encoding
+        // Check BEFORE the binary handler processes it
+        let messageConverted = false;
         if (isBinary && Buffer.isBuffer(message) && message.length < 100) {
             // Small binary message - might be text misclassified
             try {
                 const text = message.toString('utf-8');
                 if (text.startsWith('{"type":"cursor"') || text.startsWith('{"type": "cursor"')) {
                     console.log(`[CURSOR-BINARY] Found cursor in binary message #${session._all_msg_count} from ${sessionId} (${mode}): ${text}`);
-                    // Treat as text message
+                    // Treat as text message - convert it
                     isBinary = false;
                     message = text;
+                    messageConverted = true;
                 }
             } catch (e) {
                 // Not valid UTF-8, ignore
@@ -343,21 +346,45 @@ wss.on('connection', (ws, req) => {
             const msgType = typeof message;
             const msgLen = Buffer.isBuffer(message) ? message.length : (typeof message === 'string' ? message.length : 'unknown');
             const preview = typeof message === 'string' ? message.substring(0, 150) : (Buffer.isBuffer(message) && message.length > 0 ? 'BINARY' : 'EMPTY');
-            console.log(`[WebSocket] Message #${session._all_msg_count} from ${sessionId} (${mode}): isBinary=${isBinary}, type=${msgType}, length=${msgLen}, preview=${preview}`);
+            console.log(`[WebSocket] Message #${session._all_msg_count} from ${sessionId} (${mode}): isBinary=${isBinary}, type=${msgType}, length=${msgLen}, preview=${preview}, converted=${messageConverted}`);
         }
         
         try {
             
-            // Ensure message is treated as binary if it's a Buffer
-            if (Buffer.isBuffer(message)) {
+            // If message was converted from binary to text, skip binary handler
+            if (messageConverted) {
+                // Message was converted - it's now text, skip to text handler below
+                // Don't set isBinary = true
+            } else if (Buffer.isBuffer(message)) {
+                // Ensure message is treated as binary if it's a Buffer (and not converted)
                 isBinary = true;
             }
             
             // Handle binary frames (images, large data)
-            if (isBinary || Buffer.isBuffer(message)) {
+            // Skip if message was converted to text
+            if (!messageConverted && (isBinary || Buffer.isBuffer(message))) {
                 // OPTIMIZATION: Binary protocol [type:1byte][length:4bytes][data:bytes]
                 if (message.length < 5) {
-                    return; // Invalid message
+                    // Small message - might be text, check it
+                    if (Buffer.isBuffer(message)) {
+                        try {
+                            const text = message.toString('utf-8');
+                            if (text.startsWith('{"type":"cursor"') || text.startsWith('{"type": "cursor"')) {
+                                console.log(`[CURSOR-BINARY-SMALL] Found cursor in small binary message from ${sessionId} (${mode}): ${text}`);
+                                // Convert and process as text
+                                isBinary = false;
+                                message = text;
+                                messageConverted = true;
+                                // Fall through to text handler
+                            } else {
+                                return; // Invalid small binary message
+                            }
+                        } catch (e) {
+                            return; // Invalid message
+                        }
+                    } else {
+                        return; // Invalid message
+                    }
                 }
                 
                 const typeByte = message[0];
@@ -459,12 +486,16 @@ wss.on('connection', (ws, req) => {
                         }
                     }
                 }
-            } else {
+            }
+            
+            // Handle text messages (including converted cursor messages)
+            // This includes: 1) Native text messages, 2) Converted binary->text cursor messages
+            if (!isBinary || messageConverted || typeof message === 'string') {
                 // TEXT/JSON protocol (text messages)
                 // Note: message might have been converted from binary above (cursor detection)
                 // Log that we're handling a text message
                 if (session._all_msg_count <= 50) {
-                    console.log(`[WebSocket] Processing TEXT message from ${sessionId} (${mode}): isBinary=${isBinary}, message type=${typeof message}, preview=${(typeof message === 'string' ? message : message.toString('utf-8')).substring(0, 200)}`);
+                    console.log(`[WebSocket] Processing TEXT message from ${sessionId} (${mode}): isBinary=${isBinary}, converted=${messageConverted}, message type=${typeof message}, preview=${(typeof message === 'string' ? message : message.toString('utf-8')).substring(0, 200)}`);
                 }
                 try {
                     // Ensure message is a string before parsing
