@@ -301,7 +301,14 @@ wss.on('connection', (ws, req) => {
     });
     
     // OPTIMIZATION: Handle both JSON (backward compat) and binary messages
+    // CRITICAL: Handle 'message' event - this should receive ALL messages (text and binary)
     ws.on('message', (message, isBinary) => {
+        // ALWAYS log first message to verify handler is being called
+        if (!session._handler_called) {
+            session._handler_called = true;
+            console.log(`[CRITICAL] Message handler CALLED for ${sessionId} (${mode}): isBinary=${isBinary}, type=${typeof message}, isBuffer=${Buffer.isBuffer(message)}, length=${Buffer.isBuffer(message) ? message.length : (typeof message === 'string' ? message.length : 'unknown')}`);
+        }
+        
         try {
             // Log ALL messages for first few to debug cursor issue
             if (!session._all_msg_count) session._all_msg_count = 0;
