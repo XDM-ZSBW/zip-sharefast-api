@@ -145,7 +145,7 @@ function forwardToPeer(peerId, dataType, data) {
             // OPTIMIZATION: Send binary frame directly (no JSON/base64 overhead)
             try {
                 // Format: [type:1byte][length:4bytes][data:bytes]
-                const typeByte = dataType === 'frame' ? 0x01 : 0x02; // 0x01=frame, 0x02=input
+                const typeByte = dataType === 'frame' ? 0x01 : dataType === 'input' ? 0x02 : dataType === 'cursor' ? 0x04 : 0x01; // 0x01=frame, 0x02=input, 0x04=cursor
                 const lengthBuffer = Buffer.allocUnsafe(4);
                 lengthBuffer.writeUInt32BE(data.length, 0);
                 
@@ -331,7 +331,7 @@ wss.on('connection', (ws, req) => {
                     return;
                 }
                 
-                const dataType = typeByte === 0x01 ? 'frame' : typeByte === 0x02 ? 'input' : null;
+                const dataType = typeByte === 0x01 ? 'frame' : typeByte === 0x02 ? 'input' : typeByte === 0x04 ? 'cursor' : null;
                 if (!dataType) {
                     return;
                 }
