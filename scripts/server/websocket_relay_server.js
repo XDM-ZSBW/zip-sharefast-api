@@ -305,6 +305,7 @@ wss.on('connection', (ws, req) => {
     
     // OPTIMIZATION: Handle both JSON (backward compat) and binary messages
     // CRITICAL: Handle 'message' event - this should receive ALL messages (text and binary)
+    console.log(`[CRITICAL] Attaching message handler for ${sessionId} (${mode})`);
     ws.on('message', (message, isBinary) => {
         // ALWAYS log first 50 messages to verify handler is being called
         if (!session._handler_called) {
