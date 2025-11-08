@@ -213,6 +213,9 @@ wss.on('connection', (ws, req) => {
     const code = url.searchParams.get('code');
     const mode = url.searchParams.get('mode') || 'client';
     
+    // CRITICAL: Log connection to verify handler is being called
+    console.log(`[CRITICAL] Connection handler CALLED for ${sessionId} (${mode}), code=${code}`);
+    
     // Verify SSL connection
     if (!req.socket || !req.socket.encrypted) {
         if (DEBUG) console.warn(`[WebSocket] Non-SSL connection attempt rejected from ${req.socket.remoteAddress}`);
