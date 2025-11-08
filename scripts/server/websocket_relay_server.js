@@ -322,6 +322,23 @@ wss.on('connection', (ws, req) => {
             console.log(`[TEXT-MSG] Message #${session._all_msg_count} from ${sessionId} (${mode}): length=${message.length}, preview=${preview}`);
         }
         
+        // SPECIAL: Check if binary message might actually be text (cursor JSON)
+        // Sometimes websocket-client sends strings as binary with UTF-8 encoding
+        if (isBinary && Buffer.isBuffer(message) && message.length < 100) {
+            // Small binary message - might be text misclassified
+            try {
+                const text = message.toString('utf-8');
+                if (text.startsWith('{"type":"cursor"') || text.startsWith('{"type": "cursor"')) {
+                    console.log(`[CURSOR-BINARY] Found cursor in binary message #${session._all_msg_count} from ${sessionId} (${mode}): ${text}`);
+                    // Treat as text message
+                    isBinary = false;
+                    message = text;
+                }
+            } catch (e) {
+                // Not valid UTF-8, ignore
+            }
+        }
+        
         if (session._all_msg_count <= 100) {
             const msgType = typeof message;
             const msgLen = Buffer.isBuffer(message) ? message.length : (typeof message === 'string' ? message.length : 'unknown');
