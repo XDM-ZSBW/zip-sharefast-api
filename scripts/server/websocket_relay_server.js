@@ -157,6 +157,7 @@ wss.on('connection', (ws, req) => {
     const mode = url.searchParams.get('mode') || 'client';
     
     // Log connection to verify handler is being called
+    console.error(`[WebSocket] Connection handler CALLED for ${sessionId} (${mode}), code=${code}`);  // Use console.error so PM2 shows it
     console.log(`[WebSocket] Connection handler CALLED for ${sessionId} (${mode}), code=${code}`);
     process.stdout.write(`[WebSocket] Connection handler CALLED for ${sessionId} (${mode}), code=${code}\n`);
     
