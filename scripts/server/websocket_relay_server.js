@@ -260,13 +260,14 @@ wss.on('connection', (ws, req) => {
     if (!session._msg_count) session._msg_count = 0;
     
     // CRITICAL: Attach message handler - this MUST work
+    // TEST: Add a simple test handler first to verify messages are received
     ws.on('message', (message, isBinary) => {
-        // CRITICAL: Log immediately when handler is called
+        // CRITICAL: Log immediately when handler is called - use simple format
         if (!session._handler_called) {
             session._handler_called = true;
-            const calledLog = `[WebSocket] *** Message handler CALLED for ${sessionId} (${mode}) ***`;
-            console.log(calledLog);
-            process.stdout.write(calledLog + '\n');
+            // Use simple format that PM2 will definitely show
+            console.error(`[TEST] Message handler CALLED for ${sessionId} (${mode})`);
+            console.log(`[TEST] Message handler CALLED for ${sessionId} (${mode})`);
         }
         session._msg_count++;
         
