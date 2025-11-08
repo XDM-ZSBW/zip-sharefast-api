@@ -336,9 +336,21 @@ wss.on('connection', (ws, req) => {
                     return;
                 }
                 
+                // Log input forwarding for debugging
+                if (dataType === 'input') {
+                    if (!session._input_count) session._input_count = 0;
+                    session._input_count++;
+                    if (session._input_count <= 5 || session._input_count % 20 === 0) {
+                        console.log(`[INPUT] Received ${dataType} from ${sessionId} (${mode}), peerWs=${session.peerWs ? 'set' : 'null'}, peerId=${session.peerId || 'null'}`);
+                    }
+                }
+                
                 // Check if peer is linked directly
                 if (session.peerWs && session.peerWs.readyState === WebSocket.OPEN) {
                     // OPTIMIZATION: Direct forwarding - no logging for performance
+                    if (dataType === 'input' && (session._input_count <= 5 || session._input_count % 20 === 0)) {
+                        console.log(`[INPUT] Forwarding directly via peerWs to peer`);
+                    }
                     session.peerWs.send(message, { binary: true });
                 } else {
                     // Peer not linked yet - use session.peerId (set by getPeerId callback)
@@ -350,19 +362,25 @@ wss.on('connection', (ws, req) => {
                             // Found peer! Link them now
                             session.peerWs = peerSession.ws;
                             peerSession.peerWs = session.ws;
-                            if (PEER_DEBUG) {
+                            if (PEER_DEBUG || dataType === 'input') {
                                 console.log(`[WebSocket] *** Late peer linking: ${sessionId} (${mode}) <-> ${targetPeerId} (${peerSession.mode}) ***`);
                             }
                             // Forward frame directly
+                            if (dataType === 'input' && (session._input_count <= 5 || session._input_count % 20 === 0)) {
+                                console.log(`[INPUT] Forwarding via late-linked peerWs`);
+                            }
                             peerSession.ws.send(message, { binary: true });
                         } else {
                             // Store in buffer for later forwarding
+                            if (dataType === 'input' && (session._input_count <= 5 || session._input_count % 20 === 0)) {
+                                console.log(`[INPUT] Peer not found, buffering: peerSession=${peerSession ? 'exists' : 'null'}, mode=${peerSession?.mode}, ws=${peerSession?.ws ? 'exists' : 'null'}, readyState=${peerSession?.ws?.readyState}`);
+                            }
                             forwardToPeer(targetPeerId, dataType, data);
                         }
                     } else {
                         // No peerId yet - frames will be lost until peerId is retrieved
-                        if (PEER_DEBUG && dataType === 'frame') {
-                            console.log(`[WebSocket] No peerId for session ${sessionId} (${mode}) - cannot forward frame (waiting for peerId)`);
+                        if (PEER_DEBUG || dataType === 'input') {
+                            console.log(`[WebSocket] No peerId for session ${sessionId} (${mode}) - cannot forward ${dataType} (waiting for peerId)`);
                         }
                     }
                 }
