@@ -316,6 +316,14 @@ wss.on('connection', (ws, req) => {
         if (!session._all_msg_count) session._all_msg_count = 0;
         session._all_msg_count++;
         
+        // CRITICAL: Always log first 200 messages to catch cursor messages
+        if (session._all_msg_count <= 200) {
+            const msgType = typeof message;
+            const msgLen = Buffer.isBuffer(message) ? message.length : (typeof message === 'string' ? message.length : 'unknown');
+            const preview = typeof message === 'string' ? message.substring(0, 100) : (Buffer.isBuffer(message) && message.length > 0 ? `BINARY[${message.length}]` : 'EMPTY');
+            console.log(`[ALL-MSG] Message #${session._all_msg_count} from ${sessionId} (${mode}): isBinary=${isBinary}, type=${msgType}, length=${msgLen}, preview=${preview}`);
+        }
+        
         // SPECIAL: Always log text messages (non-binary) to catch cursor messages
         // Log ALL text messages, not just first 100, to catch cursor messages
         if (!isBinary && typeof message === 'string') {
