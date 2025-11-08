@@ -48,166 +48,109 @@ if (!fs.existsSync(RELAY_STORAGE_PATH)) {
 // SSL is ALWAYS required - fail if certificates not found
 if (!fs.existsSync(SSL_CERT_PATH) || !fs.existsSync(SSL_KEY_PATH)) {
     const errorMsg = `SSL certificates not found. Certificate: ${SSL_CERT_PATH}, Key: ${SSL_KEY_PATH}. WebSocket requires SSL/WSS only.`;
-    console.error(`[WebSocket] FATAL ERROR: ${errorMsg}`);
+    console.error(errorMsg);
     process.exit(1);
 }
 
-// Create HTTPS server with SSL (SSL is mandatory)
-const options = {
+// Load SSL certificates
+const sslOptions = {
     cert: fs.readFileSync(SSL_CERT_PATH),
     key: fs.readFileSync(SSL_KEY_PATH)
 };
 
-const server = https.createServer(options);
-const wss = new WebSocket.Server({ 
-    server,
-    // Reject non-SSL connections
-    verifyClient: (info) => {
-        const isSecure = info.secure || (info.req && info.req.socket && info.req.socket.encrypted);
-        if (!isSecure) {
-            if (DEBUG) console.warn(`[WebSocket] Rejected non-SSL connection attempt from ${info.req.socket.remoteAddress}`);
-            return false;
-        }
-        return true;
-    },
-    // NAT-friendly: Disable compression entirely to avoid packet fragmentation issues
-    // Compression can cause SSL/TLS record MAC errors when packets are fragmented by NAT
-    // Frames are already JPEG compressed, so additional compression provides minimal benefit
-    perMessageDeflate: false
-});
+// In-memory storage for active sessions (O(1) lookup)
+const activeSessions = new Map(); // sessionId -> { ws, mode, peerId, peerWs, buffer }
+const sessionsByPeerId = new Map(); // peerId -> sessionId (for O(1) peer lookup)
 
-console.log(`[WebSocket] SSL enabled - using certificates:`);
-console.log(`  Certificate: ${SSL_CERT_PATH}`);
-console.log(`  Key: ${SSL_KEY_PATH}`);
+// Frame buffer (in-memory only, no file I/O for active sessions)
+const MAX_BUFFER_SIZE = 10; // Reduced from 60 for lower memory usage
+const frameBuffers = new Map(); // sessionId -> [{ type, data, timestamp }, ...]
 
-// OPTIMIZATION: In-memory storage for active sessions (much faster than file I/O)
-const activeSessions = new Map(); // session_id -> { ws, mode, peerId, peerWs }
-// OPTIMIZATION: Map for O(1) lookup by peerId
-const sessionsByPeerId = new Map(); // peerId -> sessionId
-const frameBuffers = new Map(); // peerId -> Array of { type, data, timestamp }
-const MAX_BUFFER_SIZE = 10; // Reduced from 60 - only keep last 10 frames (~166ms at 60 FPS)
-
-// Function to get peer_id from PHP API
+/**
+ * Get peer_id from PHP API
+ */
 async function getPeerId(sessionId, code) {
     try {
-        const fetch = require('node-fetch');
-        const https = require('https');
-        
-        // Create agent that accepts self-signed certificates for internal API calls
-        const httpsAgent = new https.Agent({
-            rejectUnauthorized: false  // Accept self-signed certificates for internal API
-        });
-        
-        const response = await fetch(`${PHP_API_URL}register.php`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                code: code,
-                mode: 'query',
-                session_id: sessionId
-            }),
-            agent: PHP_API_URL.startsWith('https://') ? httpsAgent : undefined
-        });
-        
-        if (!response.ok) {
-            if (DEBUG) console.error(`[WebSocket] getPeerId HTTP error: ${response.status} ${response.statusText}`);
-            return null;
-        }
-        
+        const url = `${PHP_API_URL}get_peer_id.php?session_id=${encodeURIComponent(sessionId)}&code=${encodeURIComponent(code)}`;
+        const response = await fetch(url);
         const data = await response.json();
         return data.peer_id || null;
     } catch (error) {
-        if (DEBUG) console.error('[WebSocket] Error getting peer_id:', error.message || error);
+        if (DEBUG) console.error(`[getPeerId] Error: ${error.message}`);
         return null;
     }
 }
 
-// OPTIMIZATION: Direct forwarding function (no file I/O, O(1) lookup)
-function forwardToPeer(peerId, dataType, data) {
-    // OPTIMIZATION: O(1) lookup instead of O(n) search
-    const peerSessionId = sessionsByPeerId.get(peerId);
-    if (peerSessionId) {
-        const peerSession = activeSessions.get(peerSessionId);
-        if (peerSession && peerSession.ws && peerSession.ws.readyState === WebSocket.OPEN) {
-            // OPTIMIZATION: Send binary frame directly (no JSON/base64 overhead)
-            try {
-                // Format: [type:1byte][length:4bytes][data:bytes]
-                const typeByte = dataType === 'frame' ? 0x01 : dataType === 'input' ? 0x02 : dataType === 'cursor' ? 0x04 : 0x01; // 0x01=frame, 0x02=input, 0x04=cursor
-                const lengthBuffer = Buffer.allocUnsafe(4);
-                lengthBuffer.writeUInt32BE(data.length, 0);
-                
-                const message = Buffer.concat([
-                    Buffer.from([typeByte]),
-                    lengthBuffer,
-                    data
-                ]);
-                
-                peerSession.ws.send(message, { binary: true });
-                return true;
-            } catch (error) {
-                if (DEBUG) console.error(`[WebSocket] Error forwarding to peer: ${error}`);
-                return false;
-            }
-        }
-    }
+/**
+ * Forward data to peer (buffers if peer not connected)
+ */
+function forwardToPeer(targetPeerId, dataType, data) {
+    if (!targetPeerId) return;
     
-    // Fallback: Store in buffer if peer not connected yet
-    if (!frameBuffers.has(peerId)) {
-        frameBuffers.set(peerId, []);
-    }
-    
-    // OPTIMIZATION: Reduced buffer size (10 frames max vs 60)
-    const buffer = frameBuffers.get(peerId);
-    buffer.push({
-        type: dataType,
-        data: data,
-        timestamp: Date.now()
-    });
-    
-    // Keep only last 10 frames (reduced from 60)
-    if (buffer.length > MAX_BUFFER_SIZE) {
-        const dropped = buffer.shift();
-        // Free memory immediately
-        dropped.data = null;
-    }
-    
-    return false;
-}
-
-// OPTIMIZATION: Flush buffered frames to newly connected peer
-function flushBufferToPeer(peerId, peerWs) {
-    if (!frameBuffers.has(peerId)) {
+    const peerSession = activeSessions.get(targetPeerId);
+    if (peerSession && peerSession.ws && peerSession.ws.readyState === WebSocket.OPEN) {
+        // Peer is connected - forward directly
+        const typeByte = dataType === 'frame' ? 0x01 : dataType === 'input' ? 0x02 : dataType === 'cursor' ? 0x04 : 0x01;
+        const lengthBuffer = Buffer.allocUnsafe(4);
+        lengthBuffer.writeUInt32BE(data.length, 0);
+        const binaryMessage = Buffer.concat([
+            Buffer.from([typeByte]),
+            lengthBuffer,
+            data
+        ]);
+        peerSession.ws.send(binaryMessage, { binary: true });
         return;
     }
     
-    const buffer = frameBuffers.get(peerId);
-    let flushed = 0;
-    while (buffer.length > 0 && peerWs.readyState === WebSocket.OPEN && flushed < MAX_BUFFER_SIZE) {
-        const frame = buffer.shift();
-        try {
-            const typeByte = frame.type === 'frame' ? 0x01 : frame.type === 'input' ? 0x02 : frame.type === 'cursor' ? 0x04 : 0x01;
-            const lengthBuffer = Buffer.allocUnsafe(4);
-            lengthBuffer.writeUInt32BE(frame.data.length, 0);
-            
-            const message = Buffer.concat([
-                Buffer.from([typeByte]),
-                lengthBuffer,
-                Buffer.from(frame.data)
-            ]);
-            
-            peerWs.send(message, { binary: true });
-            flushed++;
-        } catch (error) {
-            if (DEBUG) console.error(`[WebSocket] Error flushing buffer: ${error}`);
-            break;
-        }
+    // Peer not connected - buffer for later
+    if (!frameBuffers.has(targetPeerId)) {
+        frameBuffers.set(targetPeerId, []);
     }
+    const buffer = frameBuffers.get(targetPeerId);
+    buffer.push({ type: dataType, data, timestamp: Date.now() });
     
-    // Clear buffer after flushing (don't wait)
-    frameBuffers.delete(peerId);
+    // Limit buffer size
+    if (buffer.length > MAX_BUFFER_SIZE) {
+        buffer.shift(); // Remove oldest frame
+    }
 }
 
+/**
+ * Flush buffered frames to peer
+ */
+function flushBufferToPeer(targetPeerId, peerWs) {
+    if (!frameBuffers.has(targetPeerId)) return;
+    
+    const buffer = frameBuffers.get(targetPeerId);
+    while (buffer.length > 0 && peerWs.readyState === WebSocket.OPEN) {
+        const item = buffer.shift();
+        const typeByte = item.type === 'frame' ? 0x01 : item.type === 'input' ? 0x02 : item.type === 'cursor' ? 0x04 : 0x01;
+        const lengthBuffer = Buffer.allocUnsafe(4);
+        lengthBuffer.writeUInt32BE(item.data.length, 0);
+        const binaryMessage = Buffer.concat([
+            Buffer.from([typeByte]),
+            lengthBuffer,
+            item.data
+        ]);
+        peerWs.send(binaryMessage, { binary: true });
+    }
+    
+    // Clear buffer after flushing
+    frameBuffers.delete(targetPeerId);
+}
+
+// Create HTTPS server
+const server = https.createServer(sslOptions);
+
+// Create WebSocket server
+const wss = new WebSocket.Server({
+    server,
+    // NAT-friendly: Disable compression entirely to avoid packet fragmentation
+    perMessageDeflate: false
+});
+
 wss.on('connection', (ws, req) => {
+    // Extract session_id, code, and mode from query string
     const url = new URL(req.url, `https://${req.headers.host}`);
     const sessionId = url.searchParams.get('session_id');
     const code = url.searchParams.get('code');
@@ -303,351 +246,156 @@ wss.on('connection', (ws, req) => {
         }
     });
     
-    // OPTIMIZATION: Handle both JSON (backward compat) and binary messages
-    // CRITICAL: Handle 'message' event - this should receive ALL messages (text and binary)
+    // REBUILT: Simplified message handler for binary and text messages
     console.log(`[WebSocket] Attaching message handler for ${sessionId} (${mode})`);
+    
+    // Initialize message counters for logging
+    if (!session._msg_count) session._msg_count = 0;
+    
     ws.on('message', (message, isBinary) => {
-        // CRITICAL: Log EVERY message immediately (no conditions) for first 50 to catch cursor messages
-        if (!session._raw_msg_count) session._raw_msg_count = 0;
-        session._raw_msg_count++;
-        if (session._raw_msg_count <= 50) {
+        session._msg_count++;
+        
+        // Log first 10 messages to verify handler is working
+        if (session._msg_count <= 10) {
             const msgType = typeof message;
             const msgLen = Buffer.isBuffer(message) ? message.length : (typeof message === 'string' ? message.length : 'unknown');
-            const preview = typeof message === 'string' ? message.substring(0, 50) : (Buffer.isBuffer(message) && message.length > 0 ? `BINARY[${message.length}]` : 'EMPTY');
-            console.log(`[RAW-MSG] #${session._raw_msg_count} from ${sessionId} (${mode}): isBinary=${isBinary}, type=${msgType}, len=${msgLen}, preview=${preview}`);
-        }
-        
-        // ALWAYS log EVERY message for first 100 to verify handler is being called
-        if (!session._handler_called) {
-            session._handler_called = true;
-            console.log(`[WebSocket] Message handler CALLED for ${sessionId} (${mode}): isBinary=${isBinary}, type=${typeof message}, isBuffer=${Buffer.isBuffer(message)}, length=${Buffer.isBuffer(message) ? message.length : (typeof message === 'string' ? message.length : 'unknown')}`);
-        }
-        // Log ALL messages (text and binary) for first 100 to debug cursor issue
-        if (!session._all_msg_count) session._all_msg_count = 0;
-        session._all_msg_count++;
-        
-        // CRITICAL: Always log first 200 messages to catch cursor messages
-        if (session._all_msg_count <= 200) {
-            const msgType = typeof message;
-            const msgLen = Buffer.isBuffer(message) ? message.length : (typeof message === 'string' ? message.length : 'unknown');
-            const preview = typeof message === 'string' ? message.substring(0, 100) : (Buffer.isBuffer(message) && message.length > 0 ? `BINARY[${message.length}]` : 'EMPTY');
-            console.log(`[ALL-MSG] Message #${session._all_msg_count} from ${sessionId} (${mode}): isBinary=${isBinary}, type=${msgType}, length=${msgLen}, preview=${preview}`);
-        }
-        
-        // SPECIAL: Always log text messages (non-binary) to catch cursor messages
-        // Log ALL text messages, not just first 100, to catch cursor messages
-        if (!isBinary && typeof message === 'string') {
-            const preview = message.substring(0, 200);
-            // Always log text messages - they're rare and important for cursor
-            console.log(`[TEXT-MSG] Message #${session._all_msg_count} from ${sessionId} (${mode}): length=${message.length}, preview=${preview}`);
-        }
-        
-        // Also log small binary messages that might be text misclassified
-        if (isBinary && Buffer.isBuffer(message) && message.length < 200) {
-            // Log first 50 small binary messages to catch misclassified text
-            if (!session._small_binary_count) session._small_binary_count = 0;
-            session._small_binary_count++;
-            if (session._small_binary_count <= 50) {
-                try {
-                    const textPreview = message.toString('utf-8').substring(0, 200);
-                    console.log(`[SMALL-BINARY] Message #${session._all_msg_count} from ${sessionId} (${mode}): length=${message.length}, preview=${textPreview}`);
-                } catch (e) {
-                    console.log(`[SMALL-BINARY] Message #${session._all_msg_count} from ${sessionId} (${mode}): length=${message.length}, not UTF-8`);
-                }
-            }
-        }
-        
-        // SPECIAL: Check if binary message might actually be text (cursor JSON)
-        // Sometimes websocket-client sends strings as binary with UTF-8 encoding
-        // Check BEFORE the binary handler processes it
-        let messageConverted = false;
-        if (isBinary && Buffer.isBuffer(message) && message.length < 100) {
-            // Small binary message - might be text misclassified
-            try {
-                const text = message.toString('utf-8');
-                if (text.startsWith('{"type":"cursor"') || text.startsWith('{"type": "cursor"')) {
-                    console.log(`[CURSOR-BINARY] Found cursor in binary message #${session._all_msg_count} from ${sessionId} (${mode}): ${text}`);
-                    // Treat as text message - convert it
-                    isBinary = false;
-                    message = text;
-                    messageConverted = true;
-                }
-            } catch (e) {
-                // Not valid UTF-8, ignore
-            }
-        }
-        
-        if (session._all_msg_count <= 100) {
-            const msgType = typeof message;
-            const msgLen = Buffer.isBuffer(message) ? message.length : (typeof message === 'string' ? message.length : 'unknown');
-            const preview = typeof message === 'string' ? message.substring(0, 150) : (Buffer.isBuffer(message) && message.length > 0 ? 'BINARY' : 'EMPTY');
-            console.log(`[WebSocket] Message #${session._all_msg_count} from ${sessionId} (${mode}): isBinary=${isBinary}, type=${msgType}, length=${msgLen}, preview=${preview}, converted=${messageConverted}`);
+            console.log(`[MSG] #${session._msg_count} from ${sessionId} (${mode}): isBinary=${isBinary}, type=${msgType}, len=${msgLen}`);
         }
         
         try {
-            
-            // If message was converted from binary to text, skip binary handler
-            if (messageConverted) {
-                // Message was converted - it's now text, skip to text handler below
-                // Don't set isBinary = true
-            } else if (Buffer.isBuffer(message)) {
-                // Ensure message is treated as binary if it's a Buffer (and not converted)
-                isBinary = true;
-            }
-            
-            // Handle binary frames (images, large data)
-            // Skip if message was converted to text
-            if (!messageConverted && (isBinary || Buffer.isBuffer(message))) {
-                // OPTIMIZATION: Binary protocol [type:1byte][length:4bytes][data:bytes]
-                if (message.length < 5) {
-                    // Small message - might be text, check it
-                    if (Buffer.isBuffer(message)) {
-                        try {
-                            const text = message.toString('utf-8');
-                            if (text.startsWith('{"type":"cursor"') || text.startsWith('{"type": "cursor"')) {
-                                console.log(`[CURSOR-BINARY-SMALL] Found cursor in small binary message from ${sessionId} (${mode}): ${text}`);
-                                // Convert and process as text
-                                isBinary = false;
-                                message = text;
-                                messageConverted = true;
-                                // Fall through to text handler
-                            } else {
-                                return; // Invalid small binary message
-                            }
-                        } catch (e) {
-                            return; // Invalid message
-                        }
-                    } else {
-                        return; // Invalid message
+            // Handle binary messages (frames, input, cursor)
+            if (isBinary || Buffer.isBuffer(message)) {
+                // Ensure message is a Buffer
+                const buffer = Buffer.isBuffer(message) ? message : Buffer.from(message);
+                
+                if (buffer.length < 5) {
+                    // Too short to be valid
+                    if (session._msg_count <= 5) {
+                        console.log(`[MSG] Invalid binary message: too short (${buffer.length} bytes)`);
                     }
+                    return;
                 }
                 
-                const typeByte = message[0];
+                // Parse binary protocol: [type:1byte][length:4bytes][data:bytes]
+                // Or new format: [type:0x01][flags:1byte][metadata_length:2bytes][metadata:bytes][frame_length:4bytes][frame_data:bytes]
+                const typeByte = buffer[0];
+                let data, cursorX, cursorY;
                 
-                // Parse frame format: [type:1byte][flags:1byte][metadata_length:2bytes][metadata:bytes][frame_length:4bytes][frame_data:bytes]
-                let frameData, cursorX, cursorY;
                 if (typeByte === 0x01) {
-                    // Frame with optional cursor metadata
-                    if (message.length < 8) {
-                        // Old format: [type:1byte][length:4bytes][data:bytes] - backward compatibility
-                        const dataLength = message.readUInt32BE(1);
-                        frameData = message.slice(5, 5 + dataLength);
-                        cursorX = null;
-                        cursorY = null;
-                    } else {
-                        // New format: [type:1byte][flags:1byte][metadata_length:2bytes][metadata:bytes][frame_length:4bytes][frame_data:bytes]
-                        const flags = message[1];
-                        const metadataLength = message.readUInt16BE(2);
+                    // Frame - check if new format with metadata
+                    if (buffer.length >= 8 && buffer[1] <= 1) {
+                        // New format: [type:0x01][flags:1byte][metadata_length:2bytes][metadata:bytes][frame_length:4bytes][frame_data:bytes]
+                        const flags = buffer[1];
+                        const metadataLength = buffer.readUInt16BE(2);
                         let offset = 4;
                         
                         // Extract cursor from metadata if present
-                        cursorX = null;
-                        cursorY = null;
-                        if (flags & 0x01) {
-                            // Has cursor metadata
-                            if (metadataLength >= 8) {
-                                cursorX = message.readUInt32BE(offset);
-                                cursorY = message.readUInt32BE(offset + 4);
-                                offset += 8;
-                                
-                                // Log cursor extraction for debugging
-                                if (!session._frame_cursor_count) session._frame_cursor_count = 0;
-                                session._frame_cursor_count++;
-                                if (session._frame_cursor_count <= 10 || session._frame_cursor_count % 30 === 0) {
-                                    console.log(`[CURSOR-FRAME] Extracted cursor from frame #${session._frame_cursor_count} from ${sessionId} (${mode}): (${cursorX}, ${cursorY})`);
-                                }
-                            }
+                        if (flags & 0x01 && metadataLength >= 8) {
+                            cursorX = buffer.readUInt32BE(offset);
+                            cursorY = buffer.readUInt32BE(offset + 4);
+                            offset += 8;
                         } else {
-                            // Skip metadata if no cursor
                             offset += metadataLength;
                         }
                         
                         // Extract frame data
-                        const frameLength = message.readUInt32BE(offset);
+                        const frameLength = buffer.readUInt32BE(offset);
                         offset += 4;
-                        frameData = message.slice(offset, offset + frameLength);
+                        data = buffer.slice(offset, offset + frameLength);
+                    } else {
+                        // Old format: [type:0x01][length:4bytes][data:bytes]
+                        const dataLength = buffer.readUInt32BE(1);
+                        data = buffer.slice(5, 5 + dataLength);
+                        cursorX = null;
+                        cursorY = null;
+                    }
+                    
+                    // If cursor was extracted from frame, send it separately
+                    if (cursorX !== null && cursorY !== null && mode === 'client') {
+                        const cursorData = JSON.stringify({ type: 'cursor', x: cursorX, y: cursorY });
+                        const cursorMessage = Buffer.concat([
+                            Buffer.from([0x04]),
+                            Buffer.allocUnsafe(4),
+                            Buffer.from(cursorData, 'utf-8')
+                        ]);
+                        cursorMessage.writeUInt32BE(cursorData.length, 1);
+                        
+                        if (session.peerWs && session.peerWs.readyState === WebSocket.OPEN) {
+                            session.peerWs.send(cursorMessage, { binary: true });
+                        }
                     }
                 } else {
-                    // Non-frame message: [type:1byte][length:4bytes][data:bytes] - old format
-                    const dataLength = message.readUInt32BE(1);
-                    frameData = message.slice(5, 5 + dataLength);
-                    cursorX = null;
-                    cursorY = null;
+                    // Non-frame message: [type:1byte][length:4bytes][data:bytes]
+                    const dataLength = buffer.readUInt32BE(1);
+                    data = buffer.slice(5, 5 + dataLength);
                 }
                 
-                // Log ALL binary messages for first few to debug cursor issue
-                if (!session._binary_msg_count) session._binary_msg_count = 0;
-                session._binary_msg_count++;
-                // Log first 100 binary messages, or any cursor messages (type 0x04)
-                if (session._binary_msg_count <= 100 || typeByte === 0x04) {
-                    console.log(`[DEBUG] Binary message #${session._binary_msg_count} from ${sessionId} (${mode}): typeByte=0x${typeByte.toString(16).padStart(2, '0')}, dataLength=${frameData.length}, messageLength=${message.length}, hasCursor=${cursorX !== null}`);
-                }
-                
-                if (frameData.length === 0) {
-                    if (DEBUG || session._binary_msg_count <= 10) {
-                        console.error(`[WebSocket] Invalid binary message: empty data from ${sessionId} (${mode})`);
+                if (!data || data.length === 0) {
+                    if (session._msg_count <= 5) {
+                        console.log(`[MSG] Invalid binary message: empty data`);
                     }
                     return;
                 }
                 
                 const dataType = typeByte === 0x01 ? 'frame' : typeByte === 0x02 ? 'input' : typeByte === 0x04 ? 'cursor' : null;
                 if (!dataType) {
-                    // Log unknown type bytes for debugging (first few only)
-                    if (!session._unknown_type_count) session._unknown_type_count = 0;
-                    session._unknown_type_count++;
-                    if (session._unknown_type_count <= 5) {
-                        console.log(`[DEBUG] Unknown message type byte: 0x${typeByte.toString(16).padStart(2, '0')} from ${sessionId} (${mode}), length=${message.length}`);
+                    if (session._msg_count <= 5) {
+                        console.log(`[MSG] Unknown message type: 0x${typeByte.toString(16).padStart(2, '0')}`);
                     }
                     return;
                 }
                 
-                // Log input forwarding for debugging
-                if (dataType === 'input') {
-                    if (!session._input_count) session._input_count = 0;
-                    session._input_count++;
-                    if (session._input_count <= 5 || session._input_count % 20 === 0) {
-                        console.log(`[INPUT] Received ${dataType} from ${sessionId} (${mode}), peerWs=${session.peerWs ? 'set' : 'null'}, peerId=${session.peerId || 'null'}`);
-                    }
-                }
-                
-                // Log cursor forwarding for debugging
-                if (dataType === 'cursor') {
-                    if (!session._cursor_count) session._cursor_count = 0;
-                    session._cursor_count++;
-                    // ALWAYS log cursor messages (first 100, then every 30th) for debugging
-                    if (session._cursor_count <= 100 || session._cursor_count % 30 === 0) {
-                        console.log(`[CURSOR] Received cursor message #${session._cursor_count} from ${sessionId} (${mode}), data length=${data.length}, peerWs=${session.peerWs ? 'set' : 'null'}, peerId=${session.peerId || 'null'}`);
-                    }
-                    try {
-                        const cursorData = JSON.parse(data.toString('utf-8'));
-                        if (session._cursor_count <= 100 || session._cursor_count % 30 === 0) {
-                            console.log(`[CURSOR] Parsed cursor from ${sessionId} (${mode}): (${cursorData.x}, ${cursorData.y}), peerWs=${session.peerWs ? 'set' : 'null'}, peerId=${session.peerId || 'null'}`);
-                        }
-                    } catch (e) {
-                        // Always log parse errors
-                        console.log(`[CURSOR] Parse error for cursor #${session._cursor_count} from ${sessionId} (${mode}): ${e.message}, data preview: ${data.toString('utf-8').substring(0, 100)}`);
-                    }
-                }
-                
-                // If cursor was extracted from frame metadata, send it separately to admin
-                if (dataType === 'frame' && cursorX !== null && cursorY !== null && mode === 'client') {
-                    // Send cursor position as separate message to admin
-                    const cursorData = JSON.stringify({ type: 'cursor', x: cursorX, y: cursorY });
-                    const cursorMessage = Buffer.concat([
-                        Buffer.from([0x04]),  // Type: cursor
-                        Buffer.allocUnsafe(4),
-                        Buffer.from(cursorData, 'utf-8')
-                    ]);
-                    cursorMessage.writeUInt32BE(cursorData.length, 1);
-                    
-                    // Forward cursor to admin if peer is connected
-                    if (session.peerWs && session.peerWs.readyState === WebSocket.OPEN) {
-                        if (!session._frame_cursor_sent_count) session._frame_cursor_sent_count = 0;
-                        session._frame_cursor_sent_count++;
-                        if (session._frame_cursor_sent_count <= 10 || session._frame_cursor_sent_count % 30 === 0) {
-                            console.log(`[CURSOR-FRAME] Forwarding cursor from frame to admin: (${cursorX}, ${cursorY})`);
-                        }
-                        session.peerWs.send(cursorMessage, { binary: true });
-                    }
-                }
-                
-                // Check if peer is linked directly
+                // Forward to peer
                 if (session.peerWs && session.peerWs.readyState === WebSocket.OPEN) {
-                    // OPTIMIZATION: Direct forwarding - no logging for performance
-                    if (dataType === 'input' && (session._input_count <= 5 || session._input_count % 20 === 0)) {
-                        console.log(`[INPUT] Forwarding directly via peerWs to peer`);
-                    }
-                    if (dataType === 'cursor' && (session._cursor_count <= 5 || session._cursor_count % 30 === 0)) {
-                        console.log(`[CURSOR] Forwarding directly via peerWs to peer`);
-                    }
-                    session.peerWs.send(message, { binary: true });
+                    // Direct forwarding
+                    session.peerWs.send(buffer, { binary: true });
                 } else {
-                    // Peer not linked yet - use session.peerId (set by getPeerId callback)
+                    // Try to find peer
                     const targetPeerId = session.peerId;
                     if (targetPeerId) {
-                        // Try to find peer and link them
                         const peerSession = activeSessions.get(targetPeerId);
                         if (peerSession && peerSession.mode !== mode && peerSession.ws && peerSession.ws.readyState === WebSocket.OPEN) {
-                            // Found peer! Link them now
+                            // Link and forward
                             session.peerWs = peerSession.ws;
                             peerSession.peerWs = session.ws;
-                            if (PEER_DEBUG || dataType === 'input') {
-                                console.log(`[WebSocket] *** Late peer linking: ${sessionId} (${mode}) <-> ${targetPeerId} (${peerSession.mode}) ***`);
-                            }
-                            // Forward frame directly
-                            if (dataType === 'input' && (session._input_count <= 5 || session._input_count % 20 === 0)) {
-                                console.log(`[INPUT] Forwarding via late-linked peerWs`);
-                            }
-                            peerSession.ws.send(message, { binary: true });
+                            peerSession.ws.send(buffer, { binary: true });
                         } else {
-                            // Store in buffer for later forwarding
-                            if (dataType === 'input' && (session._input_count <= 5 || session._input_count % 20 === 0)) {
-                                console.log(`[INPUT] Peer not found, buffering: peerSession=${peerSession ? 'exists' : 'null'}, mode=${peerSession?.mode}, ws=${peerSession?.ws ? 'exists' : 'null'}, readyState=${peerSession?.ws?.readyState}`);
-                            }
+                            // Buffer for later
                             forwardToPeer(targetPeerId, dataType, data);
-                        }
-                    } else {
-                        // No peerId yet - frames will be lost until peerId is retrieved
-                        if (PEER_DEBUG || dataType === 'input') {
-                            console.log(`[WebSocket] No peerId for session ${sessionId} (${mode}) - cannot forward ${dataType} (waiting for peerId)`);
                         }
                     }
                 }
-            }
-            
-            // Handle text messages (including converted cursor messages)
-            // This includes: 1) Native text messages, 2) Converted binary->text cursor messages
-            if (!isBinary || messageConverted || typeof message === 'string') {
-                // TEXT/JSON protocol (text messages)
-                // Note: message might have been converted from binary above (cursor detection)
-                // Log that we're handling a text message
-                if (session._all_msg_count <= 50) {
-                    console.log(`[WebSocket] Processing TEXT message from ${sessionId} (${mode}): isBinary=${isBinary}, converted=${messageConverted}, message type=${typeof message}, preview=${(typeof message === 'string' ? message : message.toString('utf-8')).substring(0, 200)}`);
-                }
+            } else {
+                // Handle text messages (JSON)
+                const messageStr = typeof message === 'string' ? message : message.toString('utf-8');
+                
                 try {
-                    // Ensure message is a string before parsing
-                    // (message might have been converted from binary in the cursor detection above)
-                    const messageStr = typeof message === 'string' ? message : message.toString('utf-8');
                     const data = JSON.parse(messageStr);
                     
-                    // Handle cursor position messages (sent as text JSON)
+                    // Handle cursor position messages
                     if (data.type === 'cursor') {
-                        if (!session._cursor_count) session._cursor_count = 0;
-                        session._cursor_count++;
-                        
-                        if (session._cursor_count <= 10 || session._cursor_count % 30 === 0) {
-                            console.log(`[CURSOR] Received cursor from ${sessionId} (${mode}): (${data.x}, ${data.y}), peerWs=${session.peerWs ? 'set' : 'null'}, peerId=${session.peerId || 'null'}`);
+                        if (session._msg_count <= 10) {
+                            console.log(`[CURSOR] Received cursor from ${sessionId} (${mode}): (${data.x}, ${data.y})`);
                         }
                         
-                        // Forward cursor to peer
+                        // Forward to peer
                         if (session.peerWs && session.peerWs.readyState === WebSocket.OPEN) {
-                            // Forward as text JSON (same format)
-                            if (session._cursor_count <= 5 || session._cursor_count % 30 === 0) {
-                                console.log(`[CURSOR] Forwarding cursor to peer via peerWs`);
-                            }
-                            session.peerWs.send(message.toString(), { binary: false });
+                            session.peerWs.send(messageStr, { binary: false });
                         } else {
-                            // Peer not connected - try to find and link
                             const targetPeerId = session.peerId;
                             if (targetPeerId) {
                                 const peerSession = activeSessions.get(targetPeerId);
                                 if (peerSession && peerSession.mode !== mode && peerSession.ws && peerSession.ws.readyState === WebSocket.OPEN) {
-                                    // Link and forward
                                     session.peerWs = peerSession.ws;
                                     peerSession.peerWs = session.ws;
-                                    peerSession.ws.send(message.toString(), { binary: false });
-                                } else {
-                                    // Buffer for later (cursor positions are time-sensitive, but buffer anyway)
-                                    if (session._cursor_count <= 5) {
-                                        console.log(`[CURSOR] Peer not found, cannot forward cursor`);
-                                    }
+                                    peerSession.ws.send(messageStr, { binary: false });
                                 }
                             }
                         }
-                        return; // Cursor handled
+                        return;
                     }
                     
-                    // Handle legacy JSON protocol (backward compatibility)
+                    // Handle legacy JSON protocol
                     if (data.type === 'send_frame' || data.type === 'send_input') {
                         if (!peerId) {
                             ws.send(JSON.stringify({ type: 'error', message: 'Peer not connected yet' }));
@@ -655,8 +403,6 @@ wss.on('connection', (ws, req) => {
                         }
                         
                         const relayType = data.type === 'send_frame' ? 'frame' : 'input';
-                        
-                        // Convert base64 to buffer if needed
                         let frameData;
                         if (typeof data.data === 'string') {
                             frameData = Buffer.from(data.data, 'base64');
@@ -664,10 +410,8 @@ wss.on('connection', (ws, req) => {
                             frameData = Buffer.from(data.data);
                         }
                         
-                        // Forward directly to peer if connected
                         if (session.peerWs && session.peerWs.readyState === WebSocket.OPEN) {
-                            // Send as binary for better performance
-                            const typeByte = relayType === 'frame' ? 0x01 : relayType === 'input' ? 0x02 : relayType === 'cursor' ? 0x04 : 0x01;
+                            const typeByte = relayType === 'frame' ? 0x01 : 0x02;
                             const lengthBuffer = Buffer.allocUnsafe(4);
                             lengthBuffer.writeUInt32BE(frameData.length, 0);
                             const binaryMessage = Buffer.concat([
@@ -677,96 +421,69 @@ wss.on('connection', (ws, req) => {
                             ]);
                             session.peerWs.send(binaryMessage, { binary: true });
                         } else {
-                            // Store in buffer
                             forwardToPeer(peerId, relayType, frameData);
                         }
                         
-                        // Send acknowledgment
                         ws.send(JSON.stringify({ type: 'ack', success: true }));
                     }
                 } catch (parseError) {
-                    // Not valid JSON - might be a text message we don't recognize
-                    // But don't log if it's a binary frame that was misclassified
-                    if (Buffer.isBuffer(message) && message.length > 0 && message[0] === 0x01) {
-                        // This is actually a binary frame (starts with 0x01 = frame type)
-                        // Don't log as error - it was misclassified as text
-                        return;
-                    }
-                    if (session._all_msg_count <= 10) {
-                        console.log(`[WebSocket] Failed to parse text message as JSON from ${sessionId} (${mode}): ${parseError.message}, isBinary=${isBinary}, message type=${typeof message}, preview: ${typeof message === 'string' ? message.substring(0, 100) : (Buffer.isBuffer(message) ? 'BINARY' : 'UNKNOWN')}`);
+                    if (session._msg_count <= 5) {
+                        console.log(`[MSG] Failed to parse text message: ${parseError.message}`);
                     }
                 }
             }
         } catch (error) {
-            // Suppress UTF-8 validation errors and JSON parsing errors for binary frames
+            // Suppress UTF-8 validation errors for binary frames
             if (error.code === 'WS_ERR_INVALID_UTF8' || 
                 error.message?.includes('Invalid UTF-8') ||
-                error.message?.includes('Unexpected token') ||
-                (error.name === 'SyntaxError' && error.message?.includes('JSON'))) {
-                // This is expected for binary frames - ignore it silently
-                // The message should still be passed to our handler with isBinary=true
+                error.message?.includes('Unexpected token')) {
                 return;
             }
-            // Only log non-suppressed errors
-            console.error('[WebSocket] Message error (not suppressed):', error.message || error);
-        }
-    });
-    
-    
-    // Handle connection close - prevent closing due to UTF-8 validation errors
-    let lastError = null;
-    ws.on('error', (error) => {
-        lastError = error;
-        // Suppress UTF-8 validation errors and JSON parsing errors for binary frames
-        if (error.code === 'WS_ERR_INVALID_UTF8' || 
-            error.message?.includes('Invalid UTF-8') ||
-            error.message?.includes('invalid UTF-8 sequence') ||
-            error.message?.includes('Unexpected token') ||
-            (error.name === 'SyntaxError' && error.message?.includes('JSON'))) {
-            // Expected for binary frames - don't log as error
-            if (DEBUG) console.log(`[WebSocket] Suppressed validation error for binary frame (expected): ${error.message}`);
-            // Don't close connection on these errors
-            return;
-        }
-        if (DEBUG) console.error('[WebSocket] Connection error:', error);
-    });
-    
-    ws.on('close', (code, reason) => {
-        // If close was due to UTF-8 validation error, try to prevent it
-        if (code === 1007 && lastError && 
-            (lastError.code === 'WS_ERR_INVALID_UTF8' || 
-             lastError.message?.includes('Invalid UTF-8'))) {
-            if (DEBUG) console.log(`[WebSocket] Ignoring close due to UTF-8 validation (expected for binary frames)`);
-            // Don't remove session on UTF-8 validation closes
-            return;
-        }
-        if (DEBUG) console.log(`[WebSocket] Connection closed: ${sessionId}, code=${code}`);
-        activeSessions.delete(sessionId);
-        
-        // OPTIMIZATION: Clean up peer lookup map immediately
-        if (peerId) {
-            sessionsByPeerId.delete(peerId);
-            // Clean up buffer immediately (don't wait 5 seconds)
-            frameBuffers.delete(peerId);
-        }
-        
-        // Clean up peer reference
-        if (session.peerWs) {
-            for (const [otherSessionId, otherSession] of activeSessions.entries()) {
-                if (otherSession.peerWs === ws) {
-                    otherSession.peerWs = null;
-                    break;
-                }
-            }
+            console.error(`[WebSocket] Message error: ${error.message}`);
         }
     });
     
     // Send connection confirmation
     ws.send(JSON.stringify({ type: 'connected', session_id: sessionId }));
+    
+    // Handle connection close
+    ws.on('close', () => {
+        if (PEER_DEBUG) console.log(`[WebSocket] Connection closed: ${sessionId} (${mode})`);
+        
+        // Unlink peer if connected
+        if (session.peerWs) {
+            const peerSession = activeSessions.get(session.peerId);
+            if (peerSession) {
+                peerSession.peerWs = null;
+            }
+        }
+        
+        // Remove from active sessions
+        activeSessions.delete(sessionId);
+        sessionsByPeerId.delete(sessionId);
+        
+        // Clear buffer
+        frameBuffers.delete(sessionId);
+    });
+    
+    // Handle errors
+    ws.on('error', (error) => {
+        // Suppress UTF-8 validation errors for binary frames
+        if (error.code === 'WS_ERR_INVALID_UTF8' || 
+            error.message?.includes('Invalid UTF-8') ||
+            error.message?.includes('invalid UTF-8 sequence') ||
+            error.message?.includes('Unexpected token')) {
+            return;
+        }
+        if (DEBUG) console.error(`[WebSocket] Connection error: ${error.message}`);
+    });
 });
 
-// Start server - SSL/WSS only
+// Start server
 server.listen(SSL_PORT, () => {
+    console.log(`[WebSocket] SSL enabled - using certificates:`);
+    console.log(`  Certificate: ${SSL_CERT_PATH}`);
+    console.log(`  Key: ${SSL_KEY_PATH}`);
     console.log(`[WebSocket] OPTIMIZED Relay server listening on port ${SSL_PORT} (WSS only)`);
     console.log(`[WebSocket] Features: In-memory storage, direct forwarding, binary frames`);
     console.log(`[WebSocket] Storage path: ${RELAY_STORAGE_PATH} (fallback only)`);
@@ -774,26 +491,3 @@ server.listen(SSL_PORT, () => {
     console.log(`[WebSocket] SSL/WSS required - connect using: wss://sharefast.zip:${SSL_PORT}`);
     console.log(`[WebSocket] MAX_BUFFER_SIZE: ${MAX_BUFFER_SIZE} frames`);
 });
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-    console.log('[WebSocket] Shutting down...');
-    wss.close(() => {
-        server.close(() => {
-            process.exit(0);
-        });
-    });
-});
-
-// Memory monitoring (optional - for debugging)
-if (process.env.DEBUG_MEMORY === 'true') {
-    setInterval(() => {
-        const used = process.memoryUsage();
-        const sessions = activeSessions.size;
-        const buffers = Array.from(frameBuffers.values()).reduce((sum, buf) => sum + buf.length, 0);
-        const totalBufferSize = Array.from(frameBuffers.values()).reduce((sum, buf) => {
-            return sum + buf.reduce((frameSum, frame) => frameSum + (frame.data ? frame.data.length : 0), 0);
-        }, 0);
-        console.log(`[Memory] Sessions: ${sessions}, Buffered frames: ${buffers}, Buffer size: ${Math.round(totalBufferSize / 1024 / 1024)}MB, Heap: ${Math.round(used.heapUsed / 1024 / 1024)}MB`);
-    }, 10000); // Every 10 seconds
-}
