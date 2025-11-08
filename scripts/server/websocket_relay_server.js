@@ -250,9 +250,11 @@ wss.on('connection', (ws, req) => {
     // REBUILT: Simplified message handler for binary and text messages
     // CRITICAL: This MUST execute - log immediately
     const attachLog = `[WebSocket] *** Attaching message handler for ${sessionId} (${mode}) ***`;
+    console.error(attachLog);  // Use console.error so PM2 definitely shows it
     console.log(attachLog);
     process.stdout.write(attachLog + '\n');
     const startLog = `[WebSocket] *** Message handler attachment starting NOW ***`;
+    console.error(startLog);  // Use console.error so PM2 definitely shows it
     console.log(startLog);
     process.stdout.write(startLog + '\n');
     
@@ -265,17 +267,18 @@ wss.on('connection', (ws, req) => {
         // CRITICAL: Log immediately when handler is called - use simple format
         if (!session._handler_called) {
             session._handler_called = true;
-            // Use simple format that PM2 will definitely show
+            // Use console.error so PM2 definitely shows it
             console.error(`[TEST] Message handler CALLED for ${sessionId} (${mode})`);
             console.log(`[TEST] Message handler CALLED for ${sessionId} (${mode})`);
         }
         session._msg_count++;
         
-        // Log first 10 messages to verify handler is working
-        if (session._msg_count <= 10) {
+        // ALWAYS log first 50 messages to catch frames
+        if (session._msg_count <= 50) {
             const msgType = typeof message;
             const msgLen = Buffer.isBuffer(message) ? message.length : (typeof message === 'string' ? message.length : 'unknown');
             const msgLog = `[MSG] #${session._msg_count} from ${sessionId} (${mode}): isBinary=${isBinary}, type=${msgType}, len=${msgLen}`;
+            console.error(msgLog);  // Use console.error so PM2 definitely shows it
             console.log(msgLog);
             process.stdout.write(msgLog + '\n');
         }
