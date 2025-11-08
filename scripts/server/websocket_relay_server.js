@@ -326,6 +326,12 @@ wss.on('connection', (ws, req) => {
                 
                 const dataType = typeByte === 0x01 ? 'frame' : typeByte === 0x02 ? 'input' : typeByte === 0x04 ? 'cursor' : null;
                 if (!dataType) {
+                    // Log unknown type bytes for debugging (first few only)
+                    if (!session._unknown_type_count) session._unknown_type_count = 0;
+                    session._unknown_type_count++;
+                    if (session._unknown_type_count <= 5) {
+                        console.log(`[DEBUG] Unknown message type byte: 0x${typeByte.toString(16).padStart(2, '0')} from ${sessionId} (${mode}), length=${message.length}`);
+                    }
                     return;
                 }
                 
@@ -342,15 +348,18 @@ wss.on('connection', (ws, req) => {
                 if (dataType === 'cursor') {
                     if (!session._cursor_count) session._cursor_count = 0;
                     session._cursor_count++;
+                    // Always log first 10 cursor messages for debugging
+                    if (session._cursor_count <= 10) {
+                        console.log(`[CURSOR] Received cursor message #${session._cursor_count} from ${sessionId} (${mode}), data length=${data.length}, peerWs=${session.peerWs ? 'set' : 'null'}, peerId=${session.peerId || 'null'}`);
+                    }
                     try {
                         const cursorData = JSON.parse(data.toString('utf-8'));
-                        if (session._cursor_count <= 5 || session._cursor_count % 30 === 0) {
-                            console.log(`[CURSOR] Received cursor from ${sessionId} (${mode}): (${cursorData.x}, ${cursorData.y}), peerWs=${session.peerWs ? 'set' : 'null'}, peerId=${session.peerId || 'null'}`);
+                        if (session._cursor_count <= 10 || session._cursor_count % 30 === 0) {
+                            console.log(`[CURSOR] Parsed cursor from ${sessionId} (${mode}): (${cursorData.x}, ${cursorData.y}), peerWs=${session.peerWs ? 'set' : 'null'}, peerId=${session.peerId || 'null'}`);
                         }
                     } catch (e) {
-                        if (session._cursor_count <= 5) {
-                            console.log(`[CURSOR] Received cursor from ${sessionId} (${mode}), failed to parse: ${e.message}`);
-                        }
+                        // Always log parse errors for first 10
+                        console.log(`[CURSOR] Parse error for cursor #${session._cursor_count} from ${sessionId} (${mode}): ${e.message}, data preview: ${data.toString('utf-8').substring(0, 100)}`);
                     }
                 }
                 
