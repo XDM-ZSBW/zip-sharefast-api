@@ -465,9 +465,13 @@ wss.on('connection', (ws, req) => {
                 }
             }
         } catch (error) {
-            // Suppress UTF-8 validation errors for binary frames
-            if (error.code === 'WS_ERR_INVALID_UTF8' || error.message?.includes('Invalid UTF-8')) {
+            // Suppress UTF-8 validation errors and JSON parsing errors for binary frames
+            if (error.code === 'WS_ERR_INVALID_UTF8' || 
+                error.message?.includes('Invalid UTF-8') ||
+                error.message?.includes('Unexpected token') ||
+                error.name === 'SyntaxError' && error.message?.includes('JSON')) {
                 // This is expected for binary frames - ignore it
+                // The message should still be passed to our handler with isBinary=true
                 return;
             }
             if (DEBUG) console.error('[WebSocket] Message error:', error);
@@ -479,13 +483,15 @@ wss.on('connection', (ws, req) => {
     let lastError = null;
     ws.on('error', (error) => {
         lastError = error;
-        // Suppress UTF-8 validation errors for binary frames
+        // Suppress UTF-8 validation errors and JSON parsing errors for binary frames
         if (error.code === 'WS_ERR_INVALID_UTF8' || 
             error.message?.includes('Invalid UTF-8') ||
-            error.message?.includes('invalid UTF-8 sequence')) {
+            error.message?.includes('invalid UTF-8 sequence') ||
+            error.message?.includes('Unexpected token') ||
+            (error.name === 'SyntaxError' && error.message?.includes('JSON'))) {
             // Expected for binary frames - don't log as error
-            if (DEBUG) console.log(`[WebSocket] Suppressed UTF-8 validation error for binary frame (expected)`);
-            // Don't close connection on UTF-8 errors
+            if (DEBUG) console.log(`[WebSocket] Suppressed validation error for binary frame (expected): ${error.message}`);
+            // Don't close connection on these errors
             return;
         }
         if (DEBUG) console.error('[WebSocket] Connection error:', error);
