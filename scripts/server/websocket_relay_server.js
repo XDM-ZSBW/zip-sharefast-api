@@ -345,11 +345,30 @@ wss.on('connection', (ws, req) => {
                     }
                 }
                 
+                // Log cursor forwarding for debugging
+                if (dataType === 'cursor') {
+                    if (!session._cursor_count) session._cursor_count = 0;
+                    session._cursor_count++;
+                    try {
+                        const cursorData = JSON.parse(data.toString('utf-8'));
+                        if (session._cursor_count <= 5 || session._cursor_count % 30 === 0) {
+                            console.log(`[CURSOR] Received cursor from ${sessionId} (${mode}): (${cursorData.x}, ${cursorData.y}), peerWs=${session.peerWs ? 'set' : 'null'}, peerId=${session.peerId || 'null'}`);
+                        }
+                    } catch (e) {
+                        if (session._cursor_count <= 5) {
+                            console.log(`[CURSOR] Received cursor from ${sessionId} (${mode}), failed to parse: ${e.message}`);
+                        }
+                    }
+                }
+                
                 // Check if peer is linked directly
                 if (session.peerWs && session.peerWs.readyState === WebSocket.OPEN) {
                     // OPTIMIZATION: Direct forwarding - no logging for performance
                     if (dataType === 'input' && (session._input_count <= 5 || session._input_count % 20 === 0)) {
                         console.log(`[INPUT] Forwarding directly via peerWs to peer`);
+                    }
+                    if (dataType === 'cursor' && (session._cursor_count <= 5 || session._cursor_count % 30 === 0)) {
+                        console.log(`[CURSOR] Forwarding directly via peerWs to peer`);
                     }
                     session.peerWs.send(message, { binary: true });
                 } else {
