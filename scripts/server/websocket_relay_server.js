@@ -307,10 +307,19 @@ wss.on('connection', (ws, req) => {
     // CRITICAL: Handle 'message' event - this should receive ALL messages (text and binary)
     console.log(`[CRITICAL] Attaching message handler for ${sessionId} (${mode})`);
     ws.on('message', (message, isBinary) => {
-        // ALWAYS log first 50 messages to verify handler is being called
+        // ALWAYS log EVERY message for first 100 to verify handler is being called
         if (!session._handler_called) {
             session._handler_called = true;
             console.log(`[CRITICAL] Message handler CALLED for ${sessionId} (${mode}): isBinary=${isBinary}, type=${typeof message}, isBuffer=${Buffer.isBuffer(message)}, length=${Buffer.isBuffer(message) ? message.length : (typeof message === 'string' ? message.length : 'unknown')}`);
+        }
+        // Log ALL messages (text and binary) for first 100 to debug cursor issue
+        if (!session._all_msg_count) session._all_msg_count = 0;
+        session._all_msg_count++;
+        if (session._all_msg_count <= 100) {
+            const msgType = typeof message;
+            const msgLen = Buffer.isBuffer(message) ? message.length : (typeof message === 'string' ? message.length : 'unknown');
+            const preview = typeof message === 'string' ? message.substring(0, 150) : (Buffer.isBuffer(message) && message.length > 0 ? 'BINARY' : 'EMPTY');
+            console.log(`[CRITICAL] Message #${session._all_msg_count} from ${sessionId} (${mode}): isBinary=${isBinary}, type=${msgType}, length=${msgLen}, preview=${preview}`);
         }
         
         try {
