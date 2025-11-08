@@ -319,8 +319,17 @@ wss.on('connection', (ws, req) => {
                 const dataLength = message.readUInt32BE(1);
                 const data = message.slice(5, 5 + dataLength);
                 
+                // Log ALL binary messages for first few to debug cursor issue
+                if (!session._binary_msg_count) session._binary_msg_count = 0;
+                session._binary_msg_count++;
+                if (session._binary_msg_count <= 10) {
+                    console.log(`[DEBUG] Binary message #${session._binary_msg_count} from ${sessionId} (${mode}): typeByte=0x${typeByte.toString(16).padStart(2, '0')}, dataLength=${dataLength}, messageLength=${message.length}`);
+                }
+                
                 if (data.length !== dataLength) {
-                    if (DEBUG) console.error(`[WebSocket] Invalid binary message length`);
+                    if (DEBUG || session._binary_msg_count <= 10) {
+                        console.error(`[WebSocket] Invalid binary message length: expected ${dataLength}, got ${data.length} from ${sessionId} (${mode})`);
+                    }
                     return;
                 }
                 
