@@ -233,6 +233,12 @@ wss.on('connection', (ws, req) => {
         return;
     }
     
+    // NAT-friendly settings for this connection
+    // Set keepalive to prevent NAT timeouts (send ping every 20 seconds)
+    ws._socket.setKeepAlive(true, 20000);  // Enable TCP keepalive, probe every 20 seconds
+    // Disable Nagle's algorithm for lower latency (important for NAT)
+    ws._socket.setNoDelay(true);
+    
     if (!sessionId || !code) {
         ws.close(1008, 'Missing session_id or code');
         return;
