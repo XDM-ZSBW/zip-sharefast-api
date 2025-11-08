@@ -198,7 +198,7 @@ function flushBufferToPeer(peerId, peerWs) {
     while (buffer.length > 0 && peerWs.readyState === WebSocket.OPEN && flushed < MAX_BUFFER_SIZE) {
         const frame = buffer.shift();
         try {
-            const typeByte = frame.type === 'frame' ? 0x01 : 0x02;
+            const typeByte = frame.type === 'frame' ? 0x01 : frame.type === 'input' ? 0x02 : frame.type === 'cursor' ? 0x04 : 0x01;
             const lengthBuffer = Buffer.allocUnsafe(4);
             lengthBuffer.writeUInt32BE(frame.data.length, 0);
             
@@ -407,7 +407,7 @@ wss.on('connection', (ws, req) => {
                     // Forward directly to peer if connected
                     if (session.peerWs && session.peerWs.readyState === WebSocket.OPEN) {
                         // Send as binary for better performance
-                        const typeByte = relayType === 'frame' ? 0x01 : 0x02;
+                        const typeByte = relayType === 'frame' ? 0x01 : relayType === 'input' ? 0x02 : relayType === 'cursor' ? 0x04 : 0x01;
                         const lengthBuffer = Buffer.allocUnsafe(4);
                         lengthBuffer.writeUInt32BE(frameData.length, 0);
                         const binaryMessage = Buffer.concat([
