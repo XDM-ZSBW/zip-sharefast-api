@@ -317,9 +317,26 @@ wss.on('connection', (ws, req) => {
         session._all_msg_count++;
         
         // SPECIAL: Always log text messages (non-binary) to catch cursor messages
+        // Log ALL text messages, not just first 100, to catch cursor messages
         if (!isBinary && typeof message === 'string') {
             const preview = message.substring(0, 200);
+            // Always log text messages - they're rare and important for cursor
             console.log(`[TEXT-MSG] Message #${session._all_msg_count} from ${sessionId} (${mode}): length=${message.length}, preview=${preview}`);
+        }
+        
+        // Also log small binary messages that might be text misclassified
+        if (isBinary && Buffer.isBuffer(message) && message.length < 200) {
+            // Log first 50 small binary messages to catch misclassified text
+            if (!session._small_binary_count) session._small_binary_count = 0;
+            session._small_binary_count++;
+            if (session._small_binary_count <= 50) {
+                try {
+                    const textPreview = message.toString('utf-8').substring(0, 200);
+                    console.log(`[SMALL-BINARY] Message #${session._all_msg_count} from ${sessionId} (${mode}): length=${message.length}, preview=${textPreview}`);
+                } catch (e) {
+                    console.log(`[SMALL-BINARY] Message #${session._all_msg_count} from ${sessionId} (${mode}): length=${message.length}, not UTF-8`);
+                }
+            }
         }
         
         // SPECIAL: Check if binary message might actually be text (cursor JSON)
