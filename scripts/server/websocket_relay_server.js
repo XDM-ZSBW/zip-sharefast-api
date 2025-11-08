@@ -303,20 +303,21 @@ wss.on('connection', (ws, req) => {
     // OPTIMIZATION: Handle both JSON (backward compat) and binary messages
     // CRITICAL: Handle 'message' event - this should receive ALL messages (text and binary)
     ws.on('message', (message, isBinary) => {
-        // ALWAYS log first message to verify handler is being called
+        // ALWAYS log first 50 messages to verify handler is being called
         if (!session._handler_called) {
             session._handler_called = true;
             console.log(`[CRITICAL] Message handler CALLED for ${sessionId} (${mode}): isBinary=${isBinary}, type=${typeof message}, isBuffer=${Buffer.isBuffer(message)}, length=${Buffer.isBuffer(message) ? message.length : (typeof message === 'string' ? message.length : 'unknown')}`);
         }
         
         try {
-            // Log ALL messages for first few to debug cursor issue
+            // Log ALL messages for first 50 to debug cursor issue
             if (!session._all_msg_count) session._all_msg_count = 0;
             session._all_msg_count++;
-            if (session._all_msg_count <= 20) {
+            if (session._all_msg_count <= 50) {
                 const msgType = typeof message;
                 const msgLen = Buffer.isBuffer(message) ? message.length : (typeof message === 'string' ? message.length : 'unknown');
-                console.log(`[DEBUG] Message #${session._all_msg_count} from ${sessionId} (${mode}): type=${msgType}, isBinary=${isBinary}, length=${msgLen}, isBuffer=${Buffer.isBuffer(message)}`);
+                const preview = typeof message === 'string' ? message.substring(0, 100) : (Buffer.isBuffer(message) ? message.toString('utf-8', 0, Math.min(100, message.length)) : 'N/A');
+                console.log(`[DEBUG] Message #${session._all_msg_count} from ${sessionId} (${mode}): type=${msgType}, isBinary=${isBinary}, length=${msgLen}, isBuffer=${Buffer.isBuffer(message)}, preview=${preview}`);
             }
             
             // Ensure message is treated as binary if it's a Buffer
@@ -432,6 +433,10 @@ wss.on('connection', (ws, req) => {
                 }
             } else {
                 // TEXT/JSON protocol (text messages)
+                // Log that we're handling a text message
+                if (session._all_msg_count <= 50) {
+                    console.log(`[DEBUG] Processing TEXT message from ${sessionId} (${mode}): ${message.toString().substring(0, 200)}`);
+                }
                 try {
                     const data = JSON.parse(message.toString());
                     
