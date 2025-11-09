@@ -69,6 +69,9 @@ def deploy_files():
         ("server/api/test_frame_flow.php", "api/test_frame_flow.php"),
         ("server/api/test_signals.php", "api/test_signals.php"),
         ("server/api/test_signal_routing.php", "api/test_signal_routing.php"),
+        ("api/diagnostic_dashboard.php", "api/diagnostic_dashboard.php"),
+        ("api/generate_test_session.php", "api/generate_test_session.php"),
+        ("api/terminate_session.php", "api/terminate_session.php"),
         
         # Migration script for database optimizations
         ("server/apply_relay_optimization.php", "apply_relay_optimization.php"),
