@@ -2,6 +2,11 @@
 /**
  * Relay Server - Routes data between client and admin
  * Similar to Google Remote Desktop relay functionality
+ * 
+ * Attribution: Relay architecture inspired by Google Remote Desktop's relay server model.
+ * Google Remote Desktop uses a central relay server to route data between peers when
+ * direct P2P connections aren't possible due to NAT/firewall restrictions.
+ * Reference: Google Remote Desktop service architecture.
  */
 
 // Handle CORS and set headers

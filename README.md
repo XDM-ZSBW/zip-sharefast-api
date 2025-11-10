@@ -148,6 +148,22 @@ See API documentation for full endpoint details.
 
 MIT License - see [LICENSE](LICENSE) file for details
 
+## 🙏 Attributions & Inspirations
+
+The ShareFast API server architecture has been inspired by relay and signaling patterns from established remote desktop technologies:
+
+### Google Remote Desktop
+- **Relay functionality**: The relay server implementation (`api/relay.php`) is inspired by Google Remote Desktop's relay architecture, which routes data through a central server for NAT traversal and firewall compatibility.
+- **Reference**: Google Remote Desktop service architecture
+
+### VNC (Virtual Network Computing)
+- **Session management**: Concepts for session registration and peer matching are inspired by VNC server architectures.
+
+### WebRTC
+- **Signaling server**: The signaling endpoints follow WebRTC signaling patterns for peer connection establishment.
+
+All implementations are original work, with architectural concepts inspired by the above technologies.
+
 ## 🤝 Contributing
 
 1. Fork the repository
