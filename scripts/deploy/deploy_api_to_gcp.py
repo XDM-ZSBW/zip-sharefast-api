@@ -19,10 +19,14 @@ def run_command(cmd, check=True):
     """Run a shell command"""
     print(f"[RUN] {cmd}")
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    if result.returncode != 0 and check:
+    if result.returncode != 0:
         print(f"[ERROR] Command failed: {cmd}")
-        print(f"Error: {result.stderr}")
-        return False
+        if result.stderr:
+            print(f"Error: {result.stderr}")
+        if result.stdout:
+            print(f"Output: {result.stdout}")
+        if check:
+            return False
     return result.returncode == 0
 
 def deploy_files():
@@ -35,59 +39,58 @@ def deploy_files():
     print(f"Remote directory: {REMOTE_BASE_DIR}")
     print()
     
-    server_dir = Path("server")
-    if not server_dir.exists():
-        print("[ERROR] server/ directory not found!")
-        print("Make sure you're running from the project root.")
+    # Check if we're in the right directory
+    api_dir = Path("api")
+    if not api_dir.exists():
+        print("[ERROR] api/ directory not found!")
+        print("Make sure you're running from the project root (zip-sharefast-api).")
         return False
     
     # Files to deploy
     files_to_deploy = [
-        # Root files
-        ("server/config.php", "config.php"),
-        ("server/database.php", "database.php"),
-        ("server/.htaccess", ".htaccess"),
+        # Root files (if they exist)
+        ("config.php", "config.php"),
+        ("database.php", "database.php"),
+        (".htaccess", ".htaccess"),
         
         # API directory files
-        ("server/api/register.php", "api/register.php"),
-        ("server/api/validate.php", "api/validate.php"),
-        ("server/api/signal.php", "api/signal.php"),
-        ("server/api/poll.php", "api/poll.php"),
-        ("server/api/disconnect.php", "api/disconnect.php"),
-        ("server/api/relay.php", "api/relay.php"),  # OPTIMIZED VERSION
-        ("server/api/relay_hybrid.php", "api/relay_hybrid.php"),
-        ("server/api/keepalive.php", "api/keepalive.php"),
-        ("server/api/list_clients.php", "api/list_clients.php"),
-        ("server/api/admin_auth.php", "api/admin_auth.php"),
-        ("server/api/admin_codes.php", "api/admin_codes.php"),
-        ("server/api/admin_manage.php", "api/admin_manage.php"),
-        ("server/api/reconnect.php", "api/reconnect.php"),
-        ("server/api/status.php", "api/status.php"),
-        ("server/api/version.php", "api/version.php"),
-        ("server/api/rate_limit.php", "api/rate_limit.php"),
-        ("server/api/ssl_error_handler.php", "api/ssl_error_handler.php"),
-        ("server/api/test_frame_flow.php", "api/test_frame_flow.php"),
-        ("server/api/test_signals.php", "api/test_signals.php"),
-        ("server/api/test_signal_routing.php", "api/test_signal_routing.php"),
+        ("api/register.php", "api/register.php"),
+        ("api/validate.php", "api/validate.php"),
+        ("api/signal.php", "api/signal.php"),
+        ("api/poll.php", "api/poll.php"),
+        ("api/disconnect.php", "api/disconnect.php"),
+        ("api/relay.php", "api/relay.php"),  # OPTIMIZED VERSION
+        ("api/relay_hybrid.php", "api/relay_hybrid.php"),
+        ("api/keepalive.php", "api/keepalive.php"),
+        ("api/list_clients.php", "api/list_clients.php"),
+        ("api/admin_auth.php", "api/admin_auth.php"),
+        ("api/admin_codes.php", "api/admin_codes.php"),
+        ("api/admin_manage.php", "api/admin_manage.php"),
+        ("api/reconnect.php", "api/reconnect.php"),
+        ("api/status.php", "api/status.php"),
+        ("api/version.php", "api/version.php"),
+        ("api/rate_limit.php", "api/rate_limit.php"),
+        ("api/ssl_error_handler.php", "api/ssl_error_handler.php"),
+        ("api/test_frame_flow.php", "api/test_frame_flow.php"),
+        ("api/test_signals.php", "api/test_signals.php"),
+        ("api/test_signal_routing.php", "api/test_signal_routing.php"),
+        ("api/debug_signals.php", "api/debug_signals.php"),
         ("api/diagnostic_dashboard.php", "api/diagnostic_dashboard.php"),
         ("api/generate_test_session.php", "api/generate_test_session.php"),
         ("api/terminate_session.php", "api/terminate_session.php"),
         
-        # Migration script for database optimizations
-        ("server/apply_relay_optimization.php", "apply_relay_optimization.php"),
-        
         # Other root files
-        ("server/index.html", "index.html"),
-        ("server/init_admin.php", "init_admin.php"),
+        ("index.html", "index.html"),
     ]
     
     print(f"[1/{len(files_to_deploy)+3}] Creating remote directories...")
     
     # Create directories on remote VM
+    # Use double quotes for Windows PowerShell compatibility
     commands = [
-        f"gcloud compute ssh {REMOTE_USER}@{INSTANCE_NAME} --zone={ZONE} --command='sudo mkdir -p {REMOTE_BASE_DIR}/api'",
-        f"gcloud compute ssh {REMOTE_USER}@{INSTANCE_NAME} --zone={ZONE} --command='sudo mkdir -p {REMOTE_BASE_DIR}/storage'",
-        f"gcloud compute ssh {REMOTE_USER}@{INSTANCE_NAME} --zone={ZONE} --command='sudo chown -R www-data:www-data {REMOTE_BASE_DIR}'",
+        f'gcloud compute ssh {REMOTE_USER}@{INSTANCE_NAME} --zone={ZONE} --command="sudo mkdir -p {REMOTE_BASE_DIR}/api"',
+        f'gcloud compute ssh {REMOTE_USER}@{INSTANCE_NAME} --zone={ZONE} --command="sudo mkdir -p {REMOTE_BASE_DIR}/storage"',
+        f'gcloud compute ssh {REMOTE_USER}@{INSTANCE_NAME} --zone={ZONE} --command="sudo chown -R www-data:www-data {REMOTE_BASE_DIR}"',
     ]
     
     for cmd in commands:
@@ -107,33 +110,52 @@ def deploy_files():
             failed += 1
             continue
         
-        # Upload via gcloud scp
+        # Upload via gcloud scp to /tmp first (user has write permissions there)
+        # Then move to final location with sudo
+        # Convert Windows paths to forward slashes for gcloud
+        local_file_str = str(local_file).replace('\\', '/')
         remote_full_path = f"{REMOTE_BASE_DIR}/{remote_path}"
+        temp_path = f"/tmp/{Path(remote_path).name}"
+        
+        # Step 1: Upload to /tmp
         upload_cmd = (
-            f"gcloud compute scp {local_file} "
-            f"{REMOTE_USER}@{INSTANCE_NAME}:{remote_full_path} "
+            f"gcloud compute scp {local_file_str} "
+            f"{REMOTE_USER}@{INSTANCE_NAME}:{temp_path} "
             f"--zone={ZONE}"
         )
         
         if run_command(upload_cmd, check=False):
-            print(f"[{idx}/{len(files_to_deploy)+3}] [OK] {remote_path}")
-            uploaded += 1
+            # Step 2: Move from /tmp to final location with sudo and set permissions
+            # Create parent directory if needed
+            parent_dir = str(Path(remote_path).parent)
+            if parent_dir and parent_dir != '.':
+                mkdir_cmd = (
+                    f'gcloud compute ssh {REMOTE_USER}@{INSTANCE_NAME} --zone={ZONE} '
+                    f'--command="sudo mkdir -p {REMOTE_BASE_DIR}/{parent_dir}"'
+                )
+                run_command(mkdir_cmd, check=False)
+            
+            # Move file and set permissions
+            move_cmd = (
+                f'gcloud compute ssh {REMOTE_USER}@{INSTANCE_NAME} --zone={ZONE} '
+                f'--command="sudo mv {temp_path} {remote_full_path} && sudo chown www-data:www-data {remote_full_path} && sudo chmod 644 {remote_full_path}"'
+            )
+            if run_command(move_cmd, check=False):
+                print(f"[{idx}/{len(files_to_deploy)+3}] [OK] {remote_path}")
+                uploaded += 1
+            else:
+                print(f"[{idx}/{len(files_to_deploy)+3}] [FAILED] Move {remote_path}")
+                failed += 1
         else:
-            print(f"[{idx}/{len(files_to_deploy)+3}] [FAILED] {remote_path}")
+            print(f"[{idx}/{len(files_to_deploy)+3}] [FAILED] Upload {remote_path}")
             failed += 1
-        
-        # Set ownership and permissions
-        chown_cmd = (
-            f"gcloud compute ssh {REMOTE_USER}@{INSTANCE_NAME} --zone={ZONE} "
-            f"--command='sudo chown www-data:www-data {remote_full_path} && sudo chmod 644 {remote_full_path}'"
-        )
-        run_command(chown_cmd, check=False)
     
     print()
     print(f"[{len(files_to_deploy)+3}/{len(files_to_deploy)+3}] Setting storage permissions...")
+    # Use double quotes for Windows PowerShell compatibility
     storage_cmd = (
-        f"gcloud compute ssh {REMOTE_USER}@{INSTANCE_NAME} --zone={ZONE} "
-        f"--command='sudo chown -R www-data:www-data {REMOTE_BASE_DIR}/storage && sudo chmod -R 755 {REMOTE_BASE_DIR}/storage'"
+        f'gcloud compute ssh {REMOTE_USER}@{INSTANCE_NAME} --zone={ZONE} '
+        f'--command="sudo chown -R www-data:www-data {REMOTE_BASE_DIR}/storage && sudo chmod -R 755 {REMOTE_BASE_DIR}/storage"'
     )
     run_command(storage_cmd, check=False)
     
