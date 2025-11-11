@@ -61,16 +61,27 @@ if ($session_result && $session_result->num_rows > 0) {
         'expires_at' => date('Y-m-d H:i:s', $session_row['expires_at'])
     ];
     $session_id = $session_row['session_id'];
+    
+    // Escape session_id for SQL queries
+    $escaped_session_id = Database::escape($session_id);
+} else {
+    // No active session found
+    header('Content-Type: application/json');
+    echo json_encode([
+        'error' => 'No active session found for code: ' . $code,
+        'code' => $code
+    ], JSON_PRETTY_PRINT);
+    exit;
 }
 
 // Get recent relay messages (frames, inputs, cursor positions)
 $logs = [];
 
-if ($session_id) {
+if ($session_id && isset($escaped_session_id)) {
     // Get frames
     $frames_sql = "SELECT id, session_id, message_type, data_length, created_at 
                    FROM relay_messages 
-                   WHERE session_id = '$session_id' AND message_type = 'frame'
+                   WHERE session_id = '$escaped_session_id' AND message_type = 'frame'
                    ORDER BY created_at DESC 
                    LIMIT $limit";
     $frames_result = Database::query($frames_sql);
@@ -89,7 +100,7 @@ if ($session_id) {
     // Get inputs
     $inputs_sql = "SELECT id, session_id, message_type, data_length, created_at 
                    FROM relay_messages 
-                   WHERE session_id = '$session_id' AND message_type = 'input'
+                   WHERE session_id = '$escaped_session_id' AND message_type = 'input'
                    ORDER BY created_at DESC 
                    LIMIT $limit";
     $inputs_result = Database::query($inputs_sql);
@@ -108,7 +119,7 @@ if ($session_id) {
     // Get cursor positions
     $cursor_sql = "SELECT id, session_id, message_type, data_length, created_at 
                    FROM relay_messages 
-                   WHERE session_id = '$session_id' AND message_type = 'cursor'
+                   WHERE session_id = '$escaped_session_id' AND message_type = 'cursor'
                    ORDER BY created_at DESC 
                    LIMIT $limit";
     $cursor_result = Database::query($cursor_sql);
