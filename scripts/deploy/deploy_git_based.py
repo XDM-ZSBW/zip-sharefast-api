@@ -91,16 +91,11 @@ fi
 echo "Repository setup complete"
 """
     
-    # Write script to local temp file
-    local_script = Path("/tmp/deploy_repo.sh")
-    try:
-        local_script.write_text(deploy_script_content)
-    except Exception as e:
-        # Fallback: use tempfile
-        import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
-            f.write(deploy_script_content)
-            local_script = Path(f.name)
+    # Write script to local temp file (cross-platform, ensure Unix line endings)
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False, newline='\n') as f:
+        f.write(deploy_script_content)
+        local_script = Path(f.name)
     
     # Upload and execute script
     upload_cmd = (
@@ -155,15 +150,11 @@ sudo chmod -R 755 {REMOTE_BASE_DIR}/storage
 echo "Files synced successfully"
 """
     
-    # Write script to local temp file
-    local_sync_script = Path("/tmp/sync_files.sh")
-    try:
-        local_sync_script.write_text(sync_script_content)
-    except Exception as e:
-        import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
-            f.write(sync_script_content)
-            local_sync_script = Path(f.name)
+    # Write script to local temp file (cross-platform, ensure Unix line endings)
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False, newline='\n') as f:
+        f.write(sync_script_content)
+        local_sync_script = Path(f.name)
     
     # Upload and execute script
     upload_cmd = (
