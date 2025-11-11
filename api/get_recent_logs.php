@@ -51,6 +51,8 @@ $session_result = Database::query($session_sql);
 
 $session_info = null;
 $session_id = null;
+$escaped_session_id = null;
+
 if ($session_result && $session_result->num_rows > 0) {
     $session_row = $session_result->fetch_assoc();
     $session_info = [
@@ -77,7 +79,7 @@ if ($session_result && $session_result->num_rows > 0) {
 // Get recent relay messages (frames, inputs, cursor positions)
 $logs = [];
 
-if ($session_id && isset($escaped_session_id)) {
+if ($session_id && $escaped_session_id) {
     // Get frames
     $frames_sql = "SELECT id, session_id, message_type, data_length, created_at 
                    FROM relay_messages 
