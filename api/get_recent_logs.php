@@ -34,6 +34,7 @@ if ($recent && !$code) {
 }
 
 if (!$code) {
+    header('Content-Type: application/json');
     echo json_encode([
         'error' => 'Code parameter required (or use recent=true)',
         'available_sessions' => []
