@@ -33,9 +33,6 @@ if ($recent && !$code) {
     }
 }
 
-// Escape code for SQL
-$escaped_code = Database::escape($code);
-
 if (!$code) {
     echo json_encode([
         'error' => 'Code parameter required (or use recent=true)',
