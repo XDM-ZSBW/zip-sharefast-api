@@ -41,7 +41,7 @@ if (!$code) {
     exit;
 }
 
-// Escape code for SQL (simple escaping, Database class should handle this)
+// Escape code for SQL
 $escaped_code = Database::escape($code);
 
 // Get session info
